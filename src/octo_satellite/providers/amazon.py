@@ -160,31 +160,63 @@ class AmazonSession:
             try:
                 start_index = (page_num - 1) * 10
                 if search:
-                    url = f"https://www.amazon.com/your-orders/orders?search={search}&startIndex={start_index}"
+                    url = f"https://www.amazon.com/your-orders/search?opt=ab&search={search}&startIndex={start_index}"
                 else:
                     url = f"https://www.amazon.com/your-orders/orders?startIndex={start_index}"
                 await page.goto(url, wait_until="domcontentloaded")
-                # Wait for order cards to appear
-                await page.wait_for_selector(
-                    ".order-card",
-                    timeout=15000,
-                )
-                await page.wait_for_timeout(2000)
 
-                if not await self._verify_authenticated(page):
-                    return {"total_count": 0, "page": page_num, "total_pages": 0, "orders": []}
+                if search:
+                    # Search results use .a-fixed-left-grid layout
+                    await page.wait_for_selector(
+                        ".a-fixed-left-grid",
+                        timeout=15000,
+                    )
+                    await page.wait_for_timeout(2000)
 
-                # Get total order count
-                count_info = await page.evaluate(r"""() => {
-                    const text = document.body.innerText;
-                    const match = text.match(/(\d+) orders? placed in/);
-                    return match ? parseInt(match[1]) : null;
-                }""")
+                    if not await self._verify_authenticated(page):
+                        return {
+                            "total_count": 0,
+                            "page": page_num,
+                            "total_pages": 0,
+                            "orders": [],
+                        }
 
-                total_count = count_info or 0
-                total_pages = (total_count + 9) // 10 if total_count else 1
+                    count_info = await page.evaluate(r"""() => {
+                        const text = document.body.innerText;
+                        const match = text.match(/(\d+) results?/i)
+                                   || text.match(/(\d+) orders?/i);
+                        return match ? parseInt(match[1]) : null;
+                    }""")
+                    total_count = count_info or 0
+                    total_pages = (total_count + 9) // 10 if total_count else 1
 
-                orders = await self._scrape_order_list(page)
+                    orders = await self._scrape_order_search(page)
+                else:
+                    # Regular order list uses .order-card layout
+                    await page.wait_for_selector(
+                        ".order-card",
+                        timeout=15000,
+                    )
+                    await page.wait_for_timeout(2000)
+
+                    if not await self._verify_authenticated(page):
+                        return {
+                            "total_count": 0,
+                            "page": page_num,
+                            "total_pages": 0,
+                            "orders": [],
+                        }
+
+                    count_info = await page.evaluate(r"""() => {
+                        const text = document.body.innerText;
+                        const match = text.match(/(\d+) orders? placed in/);
+                        return match ? parseInt(match[1]) : null;
+                    }""")
+                    total_count = count_info or 0
+                    total_pages = (total_count + 9) // 10 if total_count else 1
+
+                    orders = await self._scrape_order_list(page)
+
                 await self.save_session()
 
                 return {
@@ -302,6 +334,56 @@ class AmazonSession:
                         seen.add(title);
                         order.items.push(title);
                     }
+                }
+
+                if (order.order_id || order.items.length) {
+                    orders.push(order);
+                }
+            }
+            return orders;
+        }""")
+
+    async def _scrape_order_search(self, page: Page) -> list[dict]:
+        """Extract order info from the order search results page DOM."""
+        return await page.evaluate("""() => {
+            const orders = [];
+            const grids = document.querySelectorAll('.a-fixed-left-grid');
+
+            for (const grid of grids) {
+                const order = {
+                    order_id: null,
+                    date: null,
+                    total: null,
+                    status: null,
+                    items: [],
+                    asin: null,
+                };
+
+                // Order ID from "View order details" link
+                const detailsLink = grid.querySelector('a[href*="order-details"]');
+                if (detailsLink) {
+                    const match = detailsLink.href.match(/orderID=([^&]+)/);
+                    if (match) order.order_id = match[1];
+                }
+
+                // Date from "Ordered on ..." text
+                const spans = grid.querySelectorAll('.a-spacing-small span');
+                for (const span of spans) {
+                    const text = span.textContent.trim();
+                    if (text.startsWith('Ordered on ')) {
+                        order.date = text.replace('Ordered on ', '');
+                    }
+                }
+
+                // Product title and ASIN from product link
+                const productLink = grid.querySelector('a[href*="/dp/"] p');
+                if (productLink) {
+                    order.items.push(productLink.textContent.trim());
+                }
+                const asinLink = grid.querySelector('a[href*="/dp/"]');
+                if (asinLink) {
+                    const match = asinLink.href.match(/\\/dp\\/([A-Z0-9]+)/);
+                    if (match) order.asin = match[1];
                 }
 
                 if (order.order_id || order.items.length) {
