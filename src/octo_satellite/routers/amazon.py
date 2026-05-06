@@ -67,3 +67,75 @@ async def get_order(order_id: str, request: Request):
     if order is None:
         raise HTTPException(status_code=404, detail="Order not found or session expired.")
     return {"provider": "amazon", "order": order}
+
+
+@router.get("/cart")
+async def get_cart(request: Request):
+    """View current Amazon cart contents."""
+    result = await amazon_session.get_cart()
+    status_code = 200 if result.get("error") is None else 401
+    await log_request(request, "amazon", "cart", status_code)
+    if result.get("error") == "not_authenticated":
+        raise HTTPException(status_code=401, detail="Session expired. Re-login required.")
+    return {"provider": "amazon", **result}
+
+
+@router.post("/cart")
+async def add_to_cart(request: Request, asin: str):
+    """Add a product to cart by ASIN.
+
+    Args:
+        asin: Amazon product identifier (e.g. B0FQFB8FMG).
+    """
+    result = await amazon_session.add_to_cart(asin)
+    status_code = 200 if result["success"] else 400
+    await log_request(request, "amazon", f"cart/add/{asin}", status_code)
+    if result.get("error") == "not_authenticated":
+        raise HTTPException(status_code=401, detail="Session expired. Re-login required.")
+    return {"provider": "amazon", **result}
+
+
+@router.delete("/cart/{item_id}")
+async def remove_from_cart(item_id: str, request: Request):
+    """Remove an item from cart by item_id.
+
+    item_id is the ephemeral cart item ID returned by GET /cart.
+    """
+    result = await amazon_session.remove_from_cart(item_id)
+    status_code = 200 if result["success"] else 404
+    await log_request(request, "amazon", f"cart/remove/{item_id}", status_code)
+    if result.get("error") == "not_authenticated":
+        raise HTTPException(status_code=401, detail="Session expired. Re-login required.")
+    if result.get("error") == "item_not_found":
+        raise HTTPException(status_code=404, detail="Item not found in cart.")
+    return {"provider": "amazon", **result}
+
+
+@router.get("/search")
+async def search_products(request: Request, q: str, page: int = 1):
+    """Search Amazon products.
+
+    Args:
+        q: Search query string.
+        page: Page number (1-based).
+    """
+    result = await amazon_session.search(q, page_num=page)
+    status_code = 200 if result.get("error") is None else 401
+    await log_request(request, "amazon", f"search?q={q}", status_code)
+    if result.get("error") == "not_authenticated":
+        raise HTTPException(status_code=401, detail="Session expired. Re-login required.")
+    return {"provider": "amazon", **result}
+
+
+@router.get("/items/{asin}")
+async def get_product(asin: str, request: Request):
+    """Get product details by ASIN.
+
+    Returns title, price, rating, features, availability, and more.
+    """
+    product = await amazon_session.get_product(asin)
+    status_code = 200 if product is not None else 404
+    await log_request(request, "amazon", f"items/{asin}", status_code)
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found or session expired.")
+    return {"provider": "amazon", **product}

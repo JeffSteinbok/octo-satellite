@@ -518,6 +518,291 @@ class AmazonSession:
 
         return [result] if (result["tracking_id"] or result["events"]) else None
 
+    async def get_cart(self) -> dict:
+        """Scrape current cart contents."""
+        async with self._lock:
+            page = await self._new_page()
+            try:
+                await page.goto(
+                    "https://www.amazon.com/gp/cart/view.html",
+                    wait_until="domcontentloaded",
+                )
+                await page.wait_for_timeout(2000)
+
+                if not await self._verify_authenticated(page):
+                    return {"items": [], "subtotal": None, "error": "not_authenticated"}
+
+                return await self._scrape_cart(page)
+            except Exception as e:
+                logger.error(f"get_cart failed: {e}")
+                return {"items": [], "subtotal": None, "error": str(e)}
+            finally:
+                await page.close()
+
+    async def _scrape_cart(self, page: Page) -> dict:
+        """Extract cart items via page.evaluate()."""
+        return await page.evaluate("""() => {
+            const items = [];
+            document.querySelectorAll('.sc-list-item[data-asin][data-itemid]').forEach(el => {
+                const asin = el.getAttribute('data-asin');
+                if (!asin) return;
+
+                const titleEl = el.querySelector('.sc-product-link');
+                const title = titleEl ? titleEl.textContent.replace(/Opens in a new tab/g, '').trim() : null;
+
+                items.push({
+                    asin: asin,
+                    item_id: el.getAttribute('data-itemid'),
+                    price: parseFloat(el.getAttribute('data-price')) || null,
+                    quantity: parseInt(el.getAttribute('data-quantity')) || 1,
+                    title: title,
+                });
+            });
+
+            const subtotalEl = document.querySelector('#sc-subtotal-amount-activecart .sc-price');
+            const subtotal = subtotalEl ? subtotalEl.textContent.trim() : null;
+
+            return { items, subtotal, error: null };
+        }""")
+
+    async def add_to_cart(self, asin: str) -> dict:
+        """Add a product to cart by ASIN."""
+        async with self._lock:
+            page = await self._new_page()
+            try:
+                await page.goto(
+                    f"https://www.amazon.com/dp/{asin}",
+                    wait_until="domcontentloaded",
+                )
+                await page.wait_for_timeout(2000)
+
+                if not await self._verify_authenticated(page):
+                    return {"success": False, "error": "not_authenticated"}
+
+                # Check if product page loaded
+                title_el = await page.query_selector("#productTitle")
+                if not title_el:
+                    return {"success": False, "error": "product_not_found"}
+
+                title = (await title_el.inner_text()).strip()
+
+                # Check availability
+                avail_el = await page.query_selector("#availability")
+                if avail_el:
+                    avail_text = (await avail_el.inner_text()).strip().lower()
+                    if "unavailable" in avail_text or "out of stock" in avail_text:
+                        return {"success": False, "error": "out_of_stock", "title": title}
+
+                # Look for Add to Cart button
+                atc = await page.query_selector("#add-to-cart-button")
+                if not atc:
+                    # May need "See All Buying Options" or variant selection
+                    return {"success": False, "error": "not_directly_addable", "title": title}
+
+                await atc.click()
+                await page.wait_for_timeout(3000)
+
+                # Dismiss common interstitials (warranty, Prime signup)
+                for dismiss_sel in [
+                    "#attachSiNoCoverage",  # No warranty
+                    "#siNoCoverage",  # No coverage
+                    "#abb-intl-no-498",  # No Prime
+                    "#sp-cc-decline",  # No credit card
+                    "#smartShelfSkipLink",  # Skip shelf
+                ]:
+                    btn = await page.query_selector(dismiss_sel)
+                    if btn:
+                        await btn.click()
+                        await page.wait_for_timeout(1000)
+                        break
+
+                # Verify success: check for cart confirmation or cart count change
+                success = False
+                confirm = await page.query_selector("#NATC_SMART_WAGON_CONF_MSG_SUCCESS")
+                if confirm:
+                    success = True
+                else:
+                    # Check if we landed on cart page
+                    if "cart" in page.url.lower():
+                        success = True
+                    else:
+                        # Check cart count in nav
+                        count_el = await page.query_selector("#nav-cart-count")
+                        if count_el:
+                            success = True
+
+                return {"success": success, "asin": asin, "title": title}
+            except Exception as e:
+                logger.error(f"add_to_cart failed: {e}")
+                return {"success": False, "error": str(e)}
+            finally:
+                await page.close()
+
+    async def remove_from_cart(self, item_id: str) -> dict:
+        """Remove an item from cart by item_id."""
+        async with self._lock:
+            page = await self._new_page()
+            try:
+                await page.goto(
+                    "https://www.amazon.com/gp/cart/view.html",
+                    wait_until="domcontentloaded",
+                )
+                await page.wait_for_timeout(2000)
+
+                if not await self._verify_authenticated(page):
+                    return {"success": False, "error": "not_authenticated"}
+
+                # Find the delete button for this item
+                delete_btn = await page.query_selector(
+                    f'input[name="submit.delete-active.{item_id}"]'
+                )
+                if not delete_btn:
+                    return {"success": False, "error": "item_not_found"}
+
+                await delete_btn.click()
+                await page.wait_for_timeout(2000)
+
+                # Verify removal — the item row should show removed message
+                removed_msg = await page.query_selector(
+                    f"#sc-list-item-removed-msg-text-delete-{item_id}"
+                )
+                success = removed_msg is not None
+
+                # Save session to persist cart state
+                if success:
+                    await self.save_session()
+
+                return {"success": success, "item_id": item_id}
+            except Exception as e:
+                logger.error(f"remove_from_cart failed: {e}")
+                return {"success": False, "error": str(e)}
+            finally:
+                await page.close()
+
+    async def search(self, query: str, page_num: int = 1) -> dict:
+        """Search Amazon products."""
+        async with self._lock:
+            page = await self._new_page()
+            try:
+                url = f"https://www.amazon.com/s?k={query}&page={page_num}"
+                await page.goto(url, wait_until="domcontentloaded")
+                await page.wait_for_timeout(2000)
+
+                if not await self._verify_authenticated(page):
+                    return {"results": [], "error": "not_authenticated"}
+
+                return await self._scrape_search(page, page_num)
+            except Exception as e:
+                logger.error(f"search failed: {e}")
+                return {"results": [], "error": str(e)}
+            finally:
+                await page.close()
+
+    async def _scrape_search(self, page: Page, page_num: int) -> dict:
+        """Extract search results via page.evaluate()."""
+        data = await page.evaluate("""() => {
+            const results = [];
+            document.querySelectorAll('[data-component-type="s-search-result"]').forEach(el => {
+                const asin = el.getAttribute('data-asin');
+                if (!asin) return;
+
+                const titleEl = el.querySelector('h2');
+                const title = titleEl ? titleEl.textContent.trim() : null;
+
+                const priceEl = el.querySelector('.a-price .a-offscreen');
+                const price = priceEl ? priceEl.textContent.trim() : null;
+
+                const ratingEl = el.querySelector('.a-icon-alt');
+                const ratingText = ratingEl ? ratingEl.textContent.trim() : null;
+                const rating = ratingText ? parseFloat(ratingText) : null;
+
+                const imgEl = el.querySelector('img.s-image');
+                const image = imgEl ? imgEl.getAttribute('src') : null;
+
+                const sponsored = !!el.querySelector('.puis-sponsored-label-text, .s-label-popover-default');
+
+                results.push({ asin, title, price, rating, image, sponsored });
+            });
+
+            // Check if there's a next page
+            const nextBtn = document.querySelector('.s-pagination-next:not(.s-pagination-disabled)');
+            const hasNext = !!nextBtn;
+
+            return { results, has_next: hasNext };
+        }""")
+
+        data["page"] = page_num
+        data["error"] = None
+        return data
+
+    async def get_product(self, asin: str) -> dict | None:
+        """Get product details by ASIN."""
+        async with self._lock:
+            page = await self._new_page()
+            try:
+                await page.goto(
+                    f"https://www.amazon.com/dp/{asin}",
+                    wait_until="domcontentloaded",
+                )
+                await page.wait_for_timeout(2000)
+
+                if not await self._verify_authenticated(page):
+                    return None
+
+                return await self._scrape_product(page, asin)
+            except Exception as e:
+                logger.error(f"get_product failed: {e}")
+                return None
+            finally:
+                await page.close()
+
+    async def _scrape_product(self, page: Page, asin: str) -> dict | None:
+        """Extract product details via page.evaluate()."""
+        return await page.evaluate(
+            """(asin) => {
+            const titleEl = document.querySelector('#productTitle');
+            if (!titleEl) return null;
+
+            const priceEl = document.querySelector('#corePrice_feature_div .a-offscreen')
+                         || document.querySelector('.a-price .a-offscreen');
+            const ratingEl = document.querySelector('#acrPopover .a-icon-alt');
+            const reviewCountEl = document.querySelector('#acrCustomerReviewText');
+            const availEl = document.querySelector('#availability .primary-availability-message, #availability span');
+
+            const features = [];
+            document.querySelectorAll('#feature-bullets li .a-list-item').forEach(li => {
+                const text = li.textContent.trim();
+                if (text && !text.startsWith('Make sure') && !text.startsWith('\u203a')) {
+                    features.push(text);
+                }
+            });
+
+            const images = [];
+            document.querySelectorAll('#altImages .a-button-thumbnail img').forEach(img => {
+                const src = img.getAttribute('src');
+                if (src) images.push(src.replace(/_SS40_/, '_SS500_'));
+            });
+
+            const descEl = document.querySelector('#productDescription p');
+
+            const addable = !!document.querySelector('#add-to-cart-button');
+
+            return {
+                asin: asin,
+                title: titleEl.textContent.trim(),
+                price: priceEl ? priceEl.textContent.trim() : null,
+                rating: ratingEl ? parseFloat(ratingEl.textContent) : null,
+                review_count: reviewCountEl ? reviewCountEl.textContent.trim() : null,
+                availability: availEl ? availEl.textContent.trim() : null,
+                features: features,
+                images: images,
+                description: descEl ? descEl.textContent.trim() : null,
+                directly_addable: addable,
+            };
+        }""",
+            asin,
+        )
+
     async def close(self):
         """Shut down the browser."""
         if self._context:

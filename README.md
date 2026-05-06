@@ -13,6 +13,11 @@ Browser-automated via Playwright. Requires an interactive login session.
 | `/amazon/login` | POST | Interactive browser login |
 | `/amazon/orders` | GET | List orders with pagination (`?page=N`) |
 | `/amazon/orders/{order_id}` | GET | Order detail with tracking info |
+| `/amazon/cart` | GET | View cart contents |
+| `/amazon/cart` | POST | Add item to cart (`?asin=B0...`) |
+| `/amazon/cart/{item_id}` | DELETE | Remove item from cart |
+| `/amazon/search` | GET | Search products (`?q=...&page=N`) |
+| `/amazon/items/{asin}` | GET | Product details by ASIN |
 
 ### Monarch Money (`/monarch`)
 API-based via [monarchmoneycommunity](https://github.com/bradleyseanf/monarchmoneycommunity).
