@@ -39,15 +39,16 @@ async def login(request: Request):
 
 
 @router.get("/orders")
-async def list_orders(request: Request, page: int = 1):
-    """List Amazon orders with pagination.
+async def list_orders(request: Request, page: int = 1, q: str | None = None):
+    """List Amazon orders with pagination and optional search.
 
     Args:
         page: Page number (1-based, 10 orders per page).
+        q: Optional search query (product name, order ID, etc.).
 
     Returns orders with total count and pagination info.
     """
-    result = await amazon_session.get_orders(page_num=page)
+    result = await amazon_session.get_orders(page_num=page, search=q)
     status_code = 200 if result["orders"] is not None else 401
     await log_request(request, "amazon", "orders", status_code)
     if not result["orders"] and result["total_count"] == 0:

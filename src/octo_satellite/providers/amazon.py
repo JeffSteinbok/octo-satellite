@@ -146,11 +146,12 @@ class AmazonSession:
             finally:
                 await page.close()
 
-    async def get_orders(self, page_num: int = 1) -> dict:
+    async def get_orders(self, page_num: int = 1, search: str | None = None) -> dict:
         """Fetch orders from Amazon order history.
 
         Args:
             page_num: Page number (1-based). Each page has ~10 orders.
+            search: Optional search query (product name, order ID, etc.).
 
         Returns dict with total_count, page, total_pages, and orders list.
         """
@@ -158,7 +159,10 @@ class AmazonSession:
             page = await self._new_page()
             try:
                 start_index = (page_num - 1) * 10
-                url = f"https://www.amazon.com/your-orders/orders?startIndex={start_index}"
+                if search:
+                    url = f"https://www.amazon.com/your-orders/orders?search={search}&startIndex={start_index}"
+                else:
+                    url = f"https://www.amazon.com/your-orders/orders?startIndex={start_index}"
                 await page.goto(url, wait_until="domcontentloaded")
                 # Wait for order cards to appear
                 await page.wait_for_selector(
