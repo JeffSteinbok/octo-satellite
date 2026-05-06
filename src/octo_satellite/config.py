@@ -1,7 +1,7 @@
 from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
-from env_expand import expand_env
+from octo_satellite.env_expand import expand_env
 
 
 class Settings(BaseSettings):

@@ -10,7 +10,7 @@ from pathlib import Path
 
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 
-from config import settings
+from octo_satellite.config import settings
 
 logger = logging.getLogger("octo_satellite.amazon")
 

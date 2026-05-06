@@ -5,7 +5,7 @@ from pathlib import Path
 
 from monarchmoney import MonarchMoney
 
-from config import settings
+from octo_satellite.config import settings
 
 logger = logging.getLogger("octo_satellite.monarch")
 

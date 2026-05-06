@@ -1,6 +1,6 @@
 import os
 
-from env_expand import expand_env
+from octo_satellite.env_expand import expand_env
 
 
 def test_expand_simple(monkeypatch):

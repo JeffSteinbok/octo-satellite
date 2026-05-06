@@ -1,6 +1,6 @@
 from fastapi import Depends, HTTPException, Query, Request, status
 
-from config import settings
+from octo_satellite.config import settings
 
 
 async def verify_shared_secret(

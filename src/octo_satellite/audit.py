@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi import Request
 
-from config import settings
+from octo_satellite.config import settings
 
 logger = logging.getLogger("octo_satellite.audit")
 

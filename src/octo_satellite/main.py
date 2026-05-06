@@ -5,10 +5,10 @@ import uvicorn
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
-from config import settings
-from providers.amazon import amazon_session
-from providers.monarch import monarch_session
-from routers import amazon, monarch
+from octo_satellite.config import settings
+from octo_satellite.providers.amazon import amazon_session
+from octo_satellite.providers.monarch import monarch_session
+from octo_satellite.routers import amazon, monarch
 
 logger = logging.getLogger("octo_satellite")
 
