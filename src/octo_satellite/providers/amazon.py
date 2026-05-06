@@ -543,21 +543,24 @@ class AmazonSession:
         """Extract cart items via page.evaluate()."""
         return await page.evaluate("""() => {
             const items = [];
-            document.querySelectorAll('.sc-list-item[data-asin][data-itemid]').forEach(el => {
-                const asin = el.getAttribute('data-asin');
-                if (!asin) return;
+            const activeCart = document.querySelector('#sc-active-cart');
+            if (activeCart) {
+                activeCart.querySelectorAll('.sc-list-item[data-asin][data-itemid]').forEach(el => {
+                    const asin = el.getAttribute('data-asin');
+                    if (!asin) return;
 
-                const titleEl = el.querySelector('.sc-product-link');
-                const title = titleEl ? titleEl.textContent.replace(/Opens in a new tab/g, '').trim() : null;
+                    const titleEl = el.querySelector('.sc-product-link');
+                    const title = titleEl ? titleEl.textContent.replace(/Opens in a new tab/g, '').trim() : null;
 
-                items.push({
-                    asin: asin,
-                    item_id: el.getAttribute('data-itemid'),
-                    price: parseFloat(el.getAttribute('data-price')) || null,
-                    quantity: parseInt(el.getAttribute('data-quantity')) || 1,
-                    title: title,
+                    items.push({
+                        asin: asin,
+                        item_id: el.getAttribute('data-itemid'),
+                        price: parseFloat(el.getAttribute('data-price')) || null,
+                        quantity: parseInt(el.getAttribute('data-quantity')) || 1,
+                        title: title,
+                    });
                 });
-            });
+            }
 
             const subtotalEl = document.querySelector('#sc-subtotal-amount-activecart .sc-price');
             const subtotal = subtotalEl ? subtotalEl.textContent.trim() : null;
