@@ -20,6 +20,7 @@ def expand_env(value: str, *, strict: bool = False) -> str:
     Returns:
         The string with all resolvable references expanded.
     """
+
     def _replace(match: re.Match) -> str:
         var_name = match.group(1)
         env_value = os.environ.get(var_name)

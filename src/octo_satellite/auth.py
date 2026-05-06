@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException, Query, Request, status
+from fastapi import HTTPException, Query, Request, status
 
 from octo_satellite.config import settings
 
@@ -33,7 +33,7 @@ async def verify_shared_secret(
             detail="Missing or malformed Authorization header",
         )
 
-    bearer_token = auth_header[len("Bearer "):]
+    bearer_token = auth_header[len("Bearer ") :]
     if bearer_token != settings.shared_secret:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

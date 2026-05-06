@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from octo_satellite.auth import verify_shared_secret
 from octo_satellite.audit import log_request
+from octo_satellite.auth import verify_shared_secret
 from octo_satellite.providers.monarch import monarch_session
 
 router = APIRouter(

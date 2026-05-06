@@ -100,7 +100,9 @@ class MonarchSession:
             entry = {
                 "name": name,
                 "balance": balance,
-                "institution": account.get("institution", {}).get("name", None) if account.get("institution") else None,
+                "institution": account.get("institution", {}).get("name", None)
+                if account.get("institution")
+                else None,
                 "last_updated": account.get("updatedAt"),
             }
 

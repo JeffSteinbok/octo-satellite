@@ -1,5 +1,3 @@
-import os
-
 from octo_satellite.env_expand import expand_env
 
 
@@ -26,6 +24,7 @@ def test_expand_missing_not_strict():
 
 def test_expand_missing_strict():
     import pytest
+
     with pytest.raises(ValueError, match="not set"):
         expand_env("${DOES_NOT_EXIST_XYZ}", strict=True)
 

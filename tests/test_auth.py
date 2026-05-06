@@ -1,4 +1,4 @@
-import os
+import importlib
 
 import pytest
 from fastapi.testclient import TestClient
@@ -7,15 +7,14 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def secret_client(monkeypatch):
     monkeypatch.setenv("OCTO_SHARED_SECRET", "test-secret")
-    # Re-import to pick up new settings
-    import importlib
-    import config
-    importlib.reload(config)
-    import auth
-    importlib.reload(auth)
-    import main
-    importlib.reload(main)
-    return TestClient(main.app)
+    import octo_satellite.auth
+    import octo_satellite.config
+    import octo_satellite.main
+
+    importlib.reload(octo_satellite.config)
+    importlib.reload(octo_satellite.auth)
+    importlib.reload(octo_satellite.main)
+    return TestClient(octo_satellite.main.app)
 
 
 def test_missing_auth_header(secret_client):

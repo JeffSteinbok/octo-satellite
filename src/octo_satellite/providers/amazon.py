@@ -8,7 +8,7 @@ import asyncio
 import logging
 from pathlib import Path
 
-from playwright.async_api import async_playwright, Browser, BrowserContext, Page
+from playwright.async_api import Browser, BrowserContext, Page, async_playwright
 
 from octo_satellite.config import settings
 
@@ -355,8 +355,7 @@ class AmazonSession:
 
         # Delivery status
         status_el = await page.query_selector(
-            ".delivery-box__primary-text, .pt-promise-main-slot, "
-            "h1.pt-promise-main-slot"
+            ".delivery-box__primary-text, .pt-promise-main-slot, h1.pt-promise-main-slot"
         )
         if status_el:
             order["status"] = (await status_el.inner_text()).strip()
@@ -424,9 +423,7 @@ class AmazonSession:
         Clicks 'Track package' if available to navigate to tracking page.
         """
         # Try clicking "Track package" to get to tracking page
-        track_btn = await page.query_selector(
-            "a:has-text('Track package'), input[value*='Track']"
-        )
+        track_btn = await page.query_selector("a:has-text('Track package'), input[value*='Track']")
         if track_btn:
             try:
                 await track_btn.click()
@@ -435,7 +432,9 @@ class AmazonSession:
                 pass
 
         # Check if we're on a tracking page
-        tracking_id_el = await page.query_selector(".pt-delivery-card-trackingId, .tracking-event-trackingId-text")
+        tracking_id_el = await page.query_selector(
+            ".pt-delivery-card-trackingId, .tracking-event-trackingId-text"
+        )
         if not tracking_id_el:
             return None
 
@@ -453,16 +452,12 @@ class AmazonSession:
             result["tracking_id"] = text.replace("Tracking ID:", "").strip()
 
         # Carrier
-        carrier_el = await page.query_selector(
-            ".tracking-event-carrier-header, h3.a-spacing-small"
-        )
+        carrier_el = await page.query_selector(".tracking-event-carrier-header, h3.a-spacing-small")
         if carrier_el:
             result["carrier"] = (await carrier_el.inner_text()).strip()
 
         # Primary status (e.g., "Delivered today")
-        status_el = await page.query_selector(
-            "h1.pt-promise-main-slot, .milestone-primaryMessage"
-        )
+        status_el = await page.query_selector("h1.pt-promise-main-slot, .milestone-primaryMessage")
         if status_el:
             result["status"] = (await status_el.inner_text()).strip()
 

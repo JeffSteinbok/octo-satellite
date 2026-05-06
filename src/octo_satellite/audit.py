@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import Request
@@ -20,7 +20,7 @@ _log_file = LOG_DIR / "audit.jsonl"
 async def log_request(request: Request, provider: str, endpoint: str, status_code: int):
     """Append an audit entry for an API call."""
     entry = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "provider": provider,
         "endpoint": endpoint,
         "method": request.method,

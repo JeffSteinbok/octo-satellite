@@ -1,8 +1,9 @@
 import asyncio
+import contextlib
 import logging
+from contextlib import asynccontextmanager
 
 import uvicorn
-from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from octo_satellite.config import settings
@@ -47,10 +48,8 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown
     heartbeat_task.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
         await heartbeat_task
-    except asyncio.CancelledError:
-        pass
     await amazon_session.close()
 
 
