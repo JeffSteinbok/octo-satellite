@@ -153,9 +153,9 @@ class MonarchSession:
             return None
 
     async def get_spending(self, months: int = 3) -> dict | None:
-        """Get spending trends via cashflow summary.
+        """Get spending trends via cashflow APIs.
 
-        Returns income, expenses, and savings for recent months.
+        Returns overall summary (income/expenses/savings) and breakdown by category.
         """
         from datetime import date, timedelta
 
@@ -163,34 +163,49 @@ class MonarchSession:
         try:
             today = date.today()
             start = today - timedelta(days=months * 30)
-            result = await mm.get_cashflow_summary(
-                start_date=start.isoformat(), end_date=today.isoformat()
-            )
+            start_str = start.isoformat()
+            end_str = today.isoformat()
 
-            summaries = result.get("summary", [])
-            months_data = []
-            for entry in summaries:
-                months_data.append(
-                    {
-                        "month": entry.get("month"),
-                        "income": entry.get("sumIncome", 0),
-                        "expenses": entry.get("sumExpense", 0),
-                        "savings": entry.get("savings", 0),
-                        "savings_rate": entry.get("savingsRate", 0),
-                    }
-                )
+            summary_result = await mm.get_cashflow_summary(start_date=start_str, end_date=end_str)
+            cashflow_result = await mm.get_cashflow(start_date=start_str, end_date=end_str)
 
-            totals = result.get("totals", {})
+            # Parse summary — nested under summary[0].summary
+            totals = {}
+            summaries = summary_result.get("summary", [])
+            if summaries:
+                s = summaries[0].get("summary", {})
+                totals = {
+                    "income": s.get("sumIncome", 0),
+                    "expenses": s.get("sumExpense", 0),
+                    "savings": s.get("savings", 0),
+                    "savings_rate": s.get("savingsRate", 0),
+                }
+
+            # Parse per-category breakdown
+            income_categories = []
+            expense_categories = []
+            for entry in cashflow_result.get("byCategory", []):
+                cat = entry.get("groupBy", {}).get("category", {})
+                cat_name = cat.get("name", "Unknown")
+                cat_type = cat.get("group", {}).get("type", "expense")
+                amount = entry.get("summary", {}).get("sum", 0)
+
+                item = {"category": cat_name, "amount": amount}
+                if cat_type == "income":
+                    income_categories.append(item)
+                else:
+                    expense_categories.append(item)
+
+            # Sort by absolute amount descending
+            income_categories.sort(key=lambda x: abs(x["amount"]), reverse=True)
+            expense_categories.sort(key=lambda x: abs(x["amount"]), reverse=True)
+
             return {
-                "period_start": start.isoformat(),
-                "period_end": today.isoformat(),
-                "months": months_data,
-                "totals": {
-                    "income": totals.get("sumIncome", 0),
-                    "expenses": totals.get("sumExpense", 0),
-                    "savings": totals.get("savings", 0),
-                    "savings_rate": totals.get("savingsRate", 0),
-                },
+                "period_start": start_str,
+                "period_end": end_str,
+                "totals": totals,
+                "income_by_category": income_categories,
+                "expenses_by_category": expense_categories,
             }
         except Exception as e:
             logger.error(f"Monarch get_spending failed: {e}")
