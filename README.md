@@ -10,7 +10,11 @@
 >   chmod 600 ~/.config/octo-satellite/monarch/token.txt
 >   ```
 
-A local secrets broker that sits between [OpenClaw](https://github.com/JeffSteinbok/openclaw) and credentialed services. It exposes a REST API on `localhost` so OpenClaw can access sensitive data without directly holding credentials.
+## About
+
+Octo Satellite is a local secrets broker that sits between [OpenClaw](https://github.com/JeffSteinbok/openclaw) and credentialed services. It exposes a REST API on `localhost` so OpenClaw can access sensitive data without directly holding credentials.
+
+OpenClaw is an AI agent that manages household tasks — but it shouldn't hold passwords or session cookies directly. Octo Satellite runs as a separate service, handling authentication and credential storage so OpenClaw can request data through a safe, audited API boundary.
 
 ## Providers
 
