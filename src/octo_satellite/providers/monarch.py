@@ -152,6 +152,50 @@ class MonarchSession:
             logger.error(f"Monarch get_net_worth failed: {e}")
             return None
 
+    async def get_spending(self, months: int = 3) -> dict | None:
+        """Get spending trends via cashflow summary.
+
+        Returns income, expenses, and savings for recent months.
+        """
+        from datetime import date, timedelta
+
+        mm = self._get_client()
+        try:
+            today = date.today()
+            start = today - timedelta(days=months * 30)
+            result = await mm.get_cashflow_summary(
+                start_date=start.isoformat(), end_date=today.isoformat()
+            )
+
+            summaries = result.get("summary", [])
+            months_data = []
+            for entry in summaries:
+                months_data.append(
+                    {
+                        "month": entry.get("month"),
+                        "income": entry.get("sumIncome", 0),
+                        "expenses": entry.get("sumExpense", 0),
+                        "savings": entry.get("savings", 0),
+                        "savings_rate": entry.get("savingsRate", 0),
+                    }
+                )
+
+            totals = result.get("totals", {})
+            return {
+                "period_start": start.isoformat(),
+                "period_end": today.isoformat(),
+                "months": months_data,
+                "totals": {
+                    "income": totals.get("sumIncome", 0),
+                    "expenses": totals.get("sumExpense", 0),
+                    "savings": totals.get("savings", 0),
+                    "savings_rate": totals.get("savingsRate", 0),
+                },
+            }
+        except Exception as e:
+            logger.error(f"Monarch get_spending failed: {e}")
+            return None
+
 
 # Singleton instance
 monarch_session = MonarchSession()

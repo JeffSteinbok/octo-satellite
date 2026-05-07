@@ -42,6 +42,7 @@ API-based via [monarchmoneycommunity](https://github.com/bradleyseanf/monarchmon
 | `/monarch/login` | POST | Interactive login |
 | `/monarch/accounts` | GET | Accounts grouped by type with balances |
 | `/monarch/net-worth` | GET | Net worth from Monarch's aggregate snapshots |
+| `/monarch/spending` | GET | Spending trends: income, expenses, savings (`?months=3`) |
 
 ## Setup
 

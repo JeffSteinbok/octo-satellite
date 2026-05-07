@@ -57,3 +57,18 @@ async def get_net_worth(request: Request):
     if result is None:
         raise HTTPException(status_code=401, detail="Session expired. Re-login required.")
     return {"provider": "monarch", **result}
+
+
+@router.get("/spending")
+async def get_spending(request: Request, months: int = 3):
+    """Get spending trends — income, expenses, savings by month.
+
+    Query params:
+        months: Number of months to look back (default: 3)
+    """
+    result = await monarch_session.get_spending(months=months)
+    status_code = 200 if result is not None else 401
+    await log_request(request, "monarch", "spending", status_code)
+    if result is None:
+        raise HTTPException(status_code=401, detail="Session expired. Re-login required.")
+    return {"provider": "monarch", **result}
