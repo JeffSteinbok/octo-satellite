@@ -1,4 +1,14 @@
-# Octo Satellite
+# 🐙 Octo Satlellite
+
+> **⚠️ Security Recommendations**
+>
+> - **Run this in a separate user account** from OpenClaw. This service holds real credentials and should be isolated.
+> - **Restrict file permissions** on config files containing secrets:
+>   ```bash
+>   chmod 600 .env
+>   chmod 700 ~/.config/octo-satellite
+>   chmod 600 ~/.config/octo-satellite/monarch/token.txt
+>   ```
 
 A local secrets broker that sits between [OpenClaw](https://github.com/JeffSteinbok/openclaw) and credentialed services. It exposes a REST API on `localhost` so OpenClaw can access sensitive data without directly holding credentials.
 
