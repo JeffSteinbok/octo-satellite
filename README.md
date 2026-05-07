@@ -1,4 +1,4 @@
-# 🛰️🐙 Octo Satlellite
+# 🐙🛰️ Octo Satlellite
 
 > **⚠️ Security Recommendations**
 >
