@@ -89,16 +89,18 @@ class MonarchSession:
             credential = account.get("credential") or {}
             institution = credential.get("institution") or {}
 
-            accounts.append({
-                "id": account.get("id"),
-                "name": account.get("displayName", ""),
-                "institution": institution.get("name"),
-                "institution_status": institution.get("status"),
-                "last_synced": account.get("displayLastUpdatedAt"),
-                "sync_disabled": account.get("syncDisabled", False),
-                "update_required": credential.get("updateRequired", False),
-                "disconnected_at": credential.get("disconnectedFromDataProviderAt"),
-            })
+            accounts.append(
+                {
+                    "id": account.get("id"),
+                    "name": account.get("displayName", ""),
+                    "institution": institution.get("name"),
+                    "institution_status": institution.get("status"),
+                    "last_synced": account.get("displayLastUpdatedAt"),
+                    "sync_disabled": account.get("syncDisabled", False),
+                    "update_required": credential.get("updateRequired", False),
+                    "disconnected_at": credential.get("disconnectedFromDataProviderAt"),
+                }
+            )
 
         accounts.sort(key=lambda a: a["last_synced"] or "", reverse=True)
         return {"accounts": accounts}
