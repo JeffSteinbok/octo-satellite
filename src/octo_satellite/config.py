@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     # Dev port — auth is skipped when running on this port
     dev_port: int = 9001
 
+    # Reject requests from non-loopback clients (defense-in-depth)
+    localhost_only: bool = True
+
     # Paths for persistent data
     amazon_session_dir: str = "~/.config/octo-satellite/amazon"
     monarch_session_dir: str = "~/.config/octo-satellite/monarch"

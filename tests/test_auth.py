@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def secret_client(monkeypatch):
     monkeypatch.setenv("OCTO_SHARED_SECRET", "test-secret")
+    monkeypatch.setenv("OCTO_LOCALHOST_ONLY", "false")
     import octo_satellite.auth
     import octo_satellite.config
     import octo_satellite.main

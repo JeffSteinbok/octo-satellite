@@ -4,12 +4,12 @@
 def test_root_homepage(client):
     resp = client.get("/")
     assert resp.status_code == 200
-    data = resp.json()
-    assert data["service"] == "Octo Satellite"
-    assert data["docs"] == "/docs"
-    assert data["openapi"] == "/openapi.json"
-    assert "amazon" in data["providers"]
-    assert "monarch" in data["providers"]
+    assert "text/html" in resp.headers["content-type"]
+    assert "Octo Satellite" in resp.text
+    assert "/docs" in resp.text
+    assert "/openapi.json" in resp.text
+    assert "/amazon/health" in resp.text
+    assert "/monarch/health" in resp.text
 
 
 def test_root_health(client):

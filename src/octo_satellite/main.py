@@ -5,8 +5,10 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
 
 from octo_satellite.config import settings
+from octo_satellite.localhost import LocalhostOnlyMiddleware
 from octo_satellite.providers.amazon import amazon_session
 from octo_satellite.providers.monarch import monarch_session
 from octo_satellite.routers import amazon, monarch
@@ -62,20 +64,48 @@ app = FastAPI(
 app.include_router(amazon.router)
 app.include_router(monarch.router)
 
+if settings.localhost_only:
+    app.add_middleware(LocalhostOnlyMiddleware)
 
-@app.get("/")
+
+@app.get("/", response_class=HTMLResponse)
 async def root():
     """Landing page with links to docs and provider endpoints."""
-    return {
-        "service": "Octo Satellite",
-        "description": "Local secrets broker for OpenClaw",
-        "docs": "/docs",
-        "openapi": "/openapi.json",
-        "providers": {
-            "amazon": "/amazon/health",
-            "monarch": "/monarch/health",
-        },
-    }
+    return """<!DOCTYPE html>
+<html>
+<head>
+    <title>Octo Satellite</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 600px; margin: 60px auto; padding: 0 20px; color: #e0e0e0; background: #1a1a2e; }
+        h1 { font-size: 1.8em; }
+        a { color: #64b5f6; }
+        ul { list-style: none; padding: 0; }
+        li { padding: 4px 0; }
+        code { background: #2a2a4a; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+        .section { margin-top: 24px; }
+    </style>
+</head>
+<body>
+    <h1>🐙🛰️ Octo Satellite</h1>
+    <p>Local secrets broker for <a href="https://github.com/JeffSteinbok/openclaw">OpenClaw</a>.</p>
+
+    <div class="section">
+        <h3>📖 API Docs</h3>
+        <ul>
+            <li><a href="/docs">Interactive docs (Swagger)</a></li>
+            <li><a href="/openapi.json">OpenAPI spec</a></li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <h3>🔌 Providers</h3>
+        <ul>
+            <li><code>Amazon</code> — <a href="/amazon/health">/amazon/health</a></li>
+            <li><code>Monarch</code> — <a href="/monarch/health">/monarch/health</a></li>
+        </ul>
+    </div>
+</body>
+</html>"""
 
 
 @app.get("/health")

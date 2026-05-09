@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 def client(monkeypatch):
     """Provide a test client with clean (no-secret) config."""
     monkeypatch.delenv("OCTO_SHARED_SECRET", raising=False)
+    monkeypatch.setenv("OCTO_LOCALHOST_ONLY", "false")
     import octo_satellite.auth
     import octo_satellite.config
     import octo_satellite.main

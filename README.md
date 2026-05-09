@@ -71,6 +71,7 @@ Key settings (all prefixed with `OCTO_`):
 | `OCTO_PORT` | `9000` | Production port (auth enforced) |
 | `OCTO_DEV_PORT` | `9001` | Dev port (auth skipped) |
 | `OCTO_HOST` | `127.0.0.1` | Bind address (localhost only) |
+| `OCTO_LOCALHOST_ONLY` | `true` | Reject non-loopback clients (defense-in-depth) |
 
 Environment variables can be referenced in `.env` with `${VAR}` syntax.
 
