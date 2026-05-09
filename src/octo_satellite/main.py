@@ -87,7 +87,8 @@ async def root():
 </head>
 <body>
     <h1>🐙🛰️ Octo Satellite</h1>
-    <p>Local secrets broker for <a href="https://github.com/JeffSteinbok/openclaw">OpenClaw</a>.</p>
+    <p>Local secrets broker for <a href="https://github.com/openclaw/openclaw">OpenClaw</a>.</p>
+    <p>Source code: <a href="https://github.com/JeffSteinbok/octo-satellite">JeffSteinbok/octo-satellite</a></p>
 
     <div class="section">
         <h3>📖 API Docs</h3>
