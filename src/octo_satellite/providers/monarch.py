@@ -71,6 +71,50 @@ class MonarchSession:
             logger.warning(f"Monarch auth check failed: {e}")
             return {"authenticated": False}
 
+    async def get_sync_status(self) -> dict | None:
+        """Get sync status for all active accounts."""
+        mm = self._get_client()
+        try:
+            raw = await mm.get_accounts()
+        except Exception as e:
+            logger.error(f"Monarch get_sync_status failed: {e}")
+            return None
+
+        accounts = []
+        for account in raw.get("accounts", []):
+            is_active = not account.get("isHidden", False) and not account.get("deactivatedAt")
+            if not is_active:
+                continue
+
+            credential = account.get("credential") or {}
+            institution = credential.get("institution") or {}
+
+            accounts.append({
+                "id": account.get("id"),
+                "name": account.get("displayName", ""),
+                "institution": institution.get("name"),
+                "institution_status": institution.get("status"),
+                "last_synced": account.get("displayLastUpdatedAt"),
+                "sync_disabled": account.get("syncDisabled", False),
+                "update_required": credential.get("updateRequired", False),
+                "disconnected_at": credential.get("disconnectedFromDataProviderAt"),
+            })
+
+        accounts.sort(key=lambda a: a["last_synced"] or "", reverse=True)
+        return {"accounts": accounts}
+
+    async def refresh_accounts(self) -> dict | None:
+        """Trigger an account refresh (non-blocking — does not wait for completion)."""
+        mm = self._get_client()
+        try:
+            raw = await mm.get_accounts()
+            account_ids = [a["id"] for a in raw.get("accounts", []) if not a.get("syncDisabled")]
+            await mm.request_accounts_refresh(account_ids)
+            return {"refresh_requested": True, "account_count": len(account_ids)}
+        except Exception as e:
+            logger.error(f"Monarch refresh_accounts failed: {e}")
+            return None
+
     async def get_accounts(self) -> dict | None:
         """Fetch accounts grouped by type with balances."""
         mm = self._get_client()

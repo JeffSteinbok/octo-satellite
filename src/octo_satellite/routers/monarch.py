@@ -34,6 +34,32 @@ async def login(request: Request):
     return {"provider": "monarch", "status": "login_failed"}
 
 
+@router.get("/sync-status")
+async def sync_status(request: Request):
+    """Get sync status for all accounts — last synced time, institution health, etc."""
+    result = await monarch_session.get_sync_status()
+    status_code = 200 if result is not None else 401
+    await log_request(request, "monarch", "sync-status", status_code)
+    if result is None:
+        raise HTTPException(status_code=401, detail="Session expired. Re-login required.")
+    return {"provider": "monarch", **result}
+
+
+@router.post("/refresh")
+async def refresh_accounts(request: Request):
+    """Trigger an account refresh with all linked institutions.
+
+    Fire-and-forget — returns immediately after requesting the refresh.
+    Use GET /monarch/sync-status to check progress.
+    """
+    result = await monarch_session.refresh_accounts()
+    status_code = 200 if result is not None else 401
+    await log_request(request, "monarch", "refresh", status_code)
+    if result is None:
+        raise HTTPException(status_code=401, detail="Session expired. Re-login required.")
+    return {"provider": "monarch", **result}
+
+
 @router.get("/accounts")
 async def get_accounts(request: Request):
     """Get accounts and balances grouped by type.

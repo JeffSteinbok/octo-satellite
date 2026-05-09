@@ -40,6 +40,8 @@ API-based via [monarchmoneycommunity](https://github.com/bradleyseanf/monarchmon
 |---|---|---|
 | `/monarch/health` | GET | Check auth status (also reloads token) |
 | `/monarch/login` | POST | Interactive login |
+| `/monarch/sync-status` | GET | Sync status per account — last synced, institution health |
+| `/monarch/refresh` | POST | Trigger account refresh (fire-and-forget) |
 | `/monarch/accounts` | GET | Accounts grouped by type with balances |
 | `/monarch/net-worth` | GET | Net worth from Monarch's aggregate snapshots |
 | `/monarch/spending` | GET | Spending trends: income, expenses, savings (`?months=3`) |
