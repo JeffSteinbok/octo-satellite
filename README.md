@@ -9,6 +9,7 @@
 >   chmod 700 ~/.config/octo-satellite
 >   chmod 600 ~/.config/octo-satellite/monarch/token.txt
 >   ```
+> - **Localhost-only mode** is enabled by default (`OCTO_LOCALHOST_ONLY=true`). This rejects any request from a non-loopback IP with a 403, even if the server is accidentally bound to `0.0.0.0` or a real network interface. Do not disable this in production.
 
 ## About
 
