@@ -96,14 +96,6 @@ async def root():
             <li><a href="/openapi.json">OpenAPI spec</a></li>
         </ul>
     </div>
-
-    <div class="section">
-        <h3>🔌 Providers</h3>
-        <ul>
-            <li><code>Amazon</code> — <a href="/amazon/health">/amazon/health</a></li>
-            <li><code>Monarch</code> — <a href="/monarch/health">/monarch/health</a></li>
-        </ul>
-    </div>
 </body>
 </html>"""
 

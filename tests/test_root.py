@@ -8,8 +8,6 @@ def test_root_homepage(client):
     assert "Octo Satellite" in resp.text
     assert "/docs" in resp.text
     assert "/openapi.json" in resp.text
-    assert "/amazon/health" in resp.text
-    assert "/monarch/health" in resp.text
 
 
 def test_root_health(client):
