@@ -63,6 +63,21 @@ app.include_router(amazon.router)
 app.include_router(monarch.router)
 
 
+@app.get("/")
+async def root():
+    """Landing page with links to docs and provider endpoints."""
+    return {
+        "service": "Octo Satellite",
+        "description": "Local secrets broker for OpenClaw",
+        "docs": "/docs",
+        "openapi": "/openapi.json",
+        "providers": {
+            "amazon": "/amazon/health",
+            "monarch": "/monarch/health",
+        },
+    }
+
+
 @app.get("/health")
 async def root_health():
     return {"status": "ok"}
