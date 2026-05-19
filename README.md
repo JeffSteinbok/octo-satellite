@@ -34,6 +34,21 @@ Browser-automated via Playwright. Requires an interactive login session.
 | `/amazon/search` | GET | Search products (`?q=...&page=N`) |
 | `/amazon/items/{asin}` | GET | Product details by ASIN |
 
+### Costco (`/costco`)
+Browser-automated via Playwright. Requires an interactive login session.
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/costco/health` | GET | Check if Costco session is authenticated |
+| `/costco/login` | POST | Interactive browser login |
+| `/costco/orders` | GET | List orders with pagination (`?page=N`) |
+| `/costco/orders/{order_id}` | GET | Order detail with tracking info |
+| `/costco/cart` | GET | View cart contents |
+| `/costco/cart` | POST | Add item to cart (`?item_number=1234567`) |
+| `/costco/cart/{item_id}` | DELETE | Remove item from cart |
+| `/costco/search` | GET | Search products (`?q=...&page=N`) |
+| `/costco/items/{item_number}` | GET | Product details by item number |
+
 ### Monarch Money (`/monarch`)
 API-based via [monarchmoneycommunity](https://github.com/bradleyseanf/monarchmoneycommunity).
 

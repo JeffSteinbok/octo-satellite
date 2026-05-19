@@ -19,6 +19,7 @@ class Settings(BaseSettings):
 
     # Paths for persistent data
     amazon_session_dir: str = "~/.config/octo-satellite/amazon"
+    costco_session_dir: str = "~/.config/octo-satellite/costco"
     monarch_session_dir: str = "~/.config/octo-satellite/monarch"
     audit_log_dir: str = "~/.config/octo-satellite/logs"
 
