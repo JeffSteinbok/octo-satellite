@@ -60,6 +60,7 @@ class CostcoSession:
         self._playwright = None
         self._browser: Browser | None = None
         self._context: BrowserContext | None = None
+        self._page: Page | None = None
         self._chrome_process: subprocess.Popen | None = None
         self._lock = asyncio.Lock()
 
@@ -105,8 +106,16 @@ class CostcoSession:
         pass
 
     async def _new_page(self) -> Page:
+        """Return the reusable page, creating one only if needed."""
         ctx = await self.start()
-        return await ctx.new_page()
+        if self._page and not self._page.is_closed():
+            return self._page
+        # Reuse Chrome's existing tab if available
+        if ctx.pages:
+            self._page = ctx.pages[0]
+        else:
+            self._page = await ctx.new_page()
+        return self._page
 
     async def _verify_authenticated(self, page: Page) -> bool:
         """Check if current page is authenticated (not on sign-in page)."""
@@ -182,48 +191,42 @@ class CostcoSession:
         """Verify the saved session is still authenticated."""
         async with self._lock:
             page = await self._new_page()
-            try:
-                await page.goto(
-                    "https://www.costco.com",
-                    wait_until="domcontentloaded",
+            await page.goto(
+                "https://www.costco.com",
+                wait_until="domcontentloaded",
+            )
+            await page.wait_for_timeout(3000)
+
+            authenticated = await self._verify_authenticated(page)
+            name = None
+            if authenticated:
+                name_el = await page.query_selector(
+                    "#costco-header-account-name, .account-name, "
+                    '.my-account-header [class*="name"]'
                 )
-                await page.wait_for_timeout(3000)
+                if name_el:
+                    name = (await name_el.inner_text()).strip() or None
+                await self.save_session()
 
-                authenticated = await self._verify_authenticated(page)
-                name = None
-                if authenticated:
-                    name_el = await page.query_selector(
-                        "#costco-header-account-name, .account-name, "
-                        '.my-account-header [class*="name"]'
-                    )
-                    if name_el:
-                        name = (await name_el.inner_text()).strip() or None
-                    await self.save_session()
-
-                return {"authenticated": authenticated, "name": name}
-            finally:
-                await page.close()
+            return {"authenticated": authenticated, "name": name}
 
     async def heartbeat(self) -> bool:
         """Keep the session alive. Returns True if session is still valid."""
         async with self._lock:
             page = await self._new_page()
-            try:
-                await page.goto(
-                    "https://www.costco.com/myaccount",
-                    wait_until="domcontentloaded",
-                )
-                await page.wait_for_timeout(2000)
+            await page.goto(
+                "https://www.costco.com/myaccount",
+                wait_until="domcontentloaded",
+            )
+            await page.wait_for_timeout(2000)
 
-                if not await self._verify_authenticated(page):
-                    logger.warning("Heartbeat: session expired!")
-                    return False
+            if not await self._verify_authenticated(page):
+                logger.warning("Heartbeat: session expired!")
+                return False
 
-                await self.save_session()
-                logger.info("Heartbeat: session alive")
-                return True
-            finally:
-                await page.close()
+            await self.save_session()
+            logger.info("Heartbeat: session alive")
+            return True
 
     # -- Orders ----------------------------------------------------------------
 
@@ -231,33 +234,30 @@ class CostcoSession:
         """Fetch orders from Costco order history."""
         async with self._lock:
             page = await self._new_page()
-            try:
-                url = f"https://www.costco.com/OrderStatusCmd?pageNum={page_num}"
-                await page.goto(url, wait_until="domcontentloaded")
-                await page.wait_for_timeout(3000)
+            url = f"https://www.costco.com/OrderStatusCmd?pageNum={page_num}"
+            await page.goto(url, wait_until="domcontentloaded")
+            await page.wait_for_timeout(3000)
 
-                if not await self._verify_authenticated(page):
-                    return {
-                        "total_count": 0,
-                        "page": page_num,
-                        "total_pages": 0,
-                        "orders": None,
-                        "error": "not_authenticated",
-                    }
-
-                orders = await self._scrape_order_list(page)
-                total_count = len(orders)
-                await self.save_session()
-
+            if not await self._verify_authenticated(page):
                 return {
-                    "total_count": total_count,
+                    "total_count": 0,
                     "page": page_num,
-                    "total_pages": 1,
-                    "orders": orders,
-                    "error": None,
+                    "total_pages": 0,
+                    "orders": None,
+                    "error": "not_authenticated",
                 }
-            finally:
-                await page.close()
+
+            orders = await self._scrape_order_list(page)
+            total_count = len(orders)
+            await self.save_session()
+
+            return {
+                "total_count": total_count,
+                "page": page_num,
+                "total_pages": 1,
+                "orders": orders,
+                "error": None,
+            }
 
     async def _scrape_order_list(self, page: Page) -> list[dict]:
         """Extract order info from Costco order history page."""
@@ -335,20 +335,17 @@ class CostcoSession:
         """Fetch details for a specific Costco order."""
         async with self._lock:
             page = await self._new_page()
-            try:
-                params = urlencode({"orderId": order_id})
-                url = f"https://www.costco.com/OrderStatusDetailView?{params}"
-                await page.goto(url, wait_until="domcontentloaded")
-                await page.wait_for_timeout(3000)
+            params = urlencode({"orderId": order_id})
+            url = f"https://www.costco.com/OrderStatusDetailView?{params}"
+            await page.goto(url, wait_until="domcontentloaded")
+            await page.wait_for_timeout(3000)
 
-                if not await self._verify_authenticated(page):
-                    return None
+            if not await self._verify_authenticated(page):
+                return None
 
-                order = await self._scrape_order_detail(page, order_id)
-                await self.save_session()
-                return order
-            finally:
-                await page.close()
+            order = await self._scrape_order_detail(page, order_id)
+            await self.save_session()
+            return order
 
     async def _scrape_order_detail(self, page: Page, order_id: str) -> dict:
         """Extract order detail info from Costco order detail page."""
@@ -442,9 +439,6 @@ class CostcoSession:
             except Exception as e:
                 logger.error(f"get_cart failed: {e}")
                 return {"items": [], "subtotal": None, "error": str(e)}
-            finally:
-                await page.close()
-
     async def _scrape_cart(self, page: Page) -> dict:
         """Extract cart items from Costco cart page."""
         return await page.evaluate("""() => {
@@ -603,8 +597,6 @@ class CostcoSession:
             except Exception as e:
                 logger.error(f"add_to_cart failed: {e}")
                 return {"success": False, "error": str(e)}
-            finally:
-                await page.close()
 
     async def remove_from_cart(self, item_id: str) -> dict:
         """Remove an item from cart by item_id."""
@@ -654,10 +646,8 @@ class CostcoSession:
             except Exception as e:
                 logger.error(f"remove_from_cart failed: {e}")
                 return {"success": False, "error": str(e)}
-            finally:
-                await page.close()
 
-    # -- Search ----------------------------------------------------------------
+    # -- Search----------------------------------------------------------------
 
     async def search(self, query: str, page_num: int = 1) -> dict:
         """Search Costco products."""
@@ -676,8 +666,6 @@ class CostcoSession:
             except Exception as e:
                 logger.error(f"search failed: {e}")
                 return {"results": [], "error": str(e)}
-            finally:
-                await page.close()
 
     async def _scrape_search(self, page: Page, page_num: int) -> dict:
         """Extract search results from Costco search page."""
@@ -774,8 +762,6 @@ class CostcoSession:
             except Exception as e:
                 logger.error(f"get_product failed: {e}")
                 return None
-            finally:
-                await page.close()
 
     async def _scrape_product(self, page: Page, item_number: str) -> dict | None:
         """Extract product details from Costco product page."""
