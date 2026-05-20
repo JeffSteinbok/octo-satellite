@@ -1,12 +1,14 @@
-"""Costco provider — Playwright-based session management.
+"""Costco provider — Chrome CDP session management.
 
-First run: launches a visible browser for manual login.
-Subsequent runs: reuses saved session headlessly.
+Connects to a real Chrome browser via Chrome DevTools Protocol to bypass
+Akamai bot detection. Chrome is launched with a dedicated profile directory
+so cookies/session persist across restarts.
 """
 
 import asyncio
-import contextlib
 import logging
+import shutil
+import subprocess
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
@@ -18,105 +20,141 @@ logger = logging.getLogger("octo_satellite.costco")
 
 SESSION_DIR = Path(settings.costco_session_dir).expanduser()
 
-USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/125.0.0.0 Safari/537.36"
-)
+# Dedicated Chrome profile for Costco (separate from user's default profile)
+CHROME_PROFILE_DIR = SESSION_DIR / "chrome-profile"
+
+CDP_PORT = 9222
+
+
+def _find_chrome() -> str:
+    """Find the Chrome executable on the system."""
+    # Try common names in PATH
+    for name in ("google-chrome", "google-chrome-stable", "chrome", "chromium", "msedge"):
+        path = shutil.which(name)
+        if path:
+            return path
+
+    # Windows default locations
+    for candidate in (
+        Path.home() / "AppData/Local/Google/Chrome/Application/chrome.exe",
+        Path("C:/Program Files/Google/Chrome/Application/chrome.exe"),
+        Path("C:/Program Files (x86)/Google/Chrome/Application/chrome.exe"),
+    ):
+        if candidate.exists():
+            return str(candidate)
+
+    raise FileNotFoundError(
+        "Chrome not found. Install Google Chrome or set it in your PATH."
+    )
 
 
 class CostcoSession:
-    """Manages a persistent Playwright browser session for Costco."""
+    """Manages a Costco session via Chrome CDP.
+
+    Launches a real Chrome instance with remote debugging and connects
+    via Playwright CDP. This bypasses Akamai bot detection entirely
+    since it's a genuine browser, not an automation-controlled one.
+    """
 
     def __init__(self):
         self._playwright = None
         self._browser: Browser | None = None
         self._context: BrowserContext | None = None
+        self._chrome_process: subprocess.Popen | None = None
         self._lock = asyncio.Lock()
 
-    @property
-    def _session_exists(self) -> bool:
-        return (SESSION_DIR / "state.json").exists()
+    def _launch_chrome(self):
+        """Launch Chrome with remote debugging if not already running."""
+        if self._chrome_process and self._chrome_process.poll() is None:
+            return
 
-    async def start(self, headless: bool | None = None) -> BrowserContext:
+        CHROME_PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+        chrome = _find_chrome()
+        logger.info("Launching Chrome from %s with CDP on port %s", chrome, CDP_PORT)
+
+        self._chrome_process = subprocess.Popen(
+            [
+                chrome,
+                f"--remote-debugging-port={CDP_PORT}",
+                f"--user-data-dir={CHROME_PROFILE_DIR}",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+    async def start(self) -> BrowserContext:
+        """Connect to Chrome via CDP, launching it if needed."""
         if self._context:
             return self._context
 
-        if headless is None:
-            headless = self._session_exists
-
         SESSION_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self._launch_chrome()
+
+        # Give Chrome a moment to start the CDP server
+        await asyncio.sleep(2)
 
         self._playwright = await async_playwright().start()
-        self._browser = await self._playwright.chromium.launch(headless=headless)
-
-        storage_kwargs = {}
-        if self._session_exists:
-            storage_kwargs["storage_state"] = str(SESSION_DIR / "state.json")
-
-        self._context = await self._browser.new_context(
-            user_agent=USER_AGENT,
-            viewport={"width": 1920, "height": 1080},
-            locale="en-US",
-            timezone_id="America/Los_Angeles",
-            **storage_kwargs,
+        self._browser = await self._playwright.chromium.connect_over_cdp(
+            f"http://localhost:{CDP_PORT}"
         )
+        self._context = self._browser.contexts[0]
         return self._context
 
     async def save_session(self):
-        if self._context:
-            state_file = SESSION_DIR / "state.json"
-            await self._context.storage_state(path=str(state_file))
-            with contextlib.suppress(OSError):
-                state_file.chmod(0o600)
+        # Cookies persist automatically in Chrome's profile directory.
+        pass
 
     async def _new_page(self) -> Page:
-        ctx = await self.start(headless=True)
+        ctx = await self.start()
         return await ctx.new_page()
 
     async def _verify_authenticated(self, page: Page) -> bool:
         """Check if current page is authenticated (not on sign-in page)."""
         url = page.url.lower()
+        logger.info(f"Auth check URL: {page.url}")
         if "logonform" in url or "signin" in url:
+            logger.info("Auth check: on sign-in page")
             return False
         # Check for account link as positive signal
         acct = await page.query_selector(
             'a[href*="/AccountHomeCmd"], a[href*="/myaccount"]'
         )
-        return acct is not None
+        if not acct:
+            # Broader fallback: look for sign-in link absence as negative signal
+            sign_in = await page.query_selector(
+                'a[href*="/LogonForm"], a[id="header_sign_in"]'
+            )
+            if sign_in:
+                logger.info("Auth check: sign-in link found — not authenticated")
+                return False
+            # If neither account nor sign-in link found, check page content
+            body_text = await page.evaluate("() => document.body?.innerText?.substring(0, 500) || ''")
+            logger.info(f"Auth check: no account/sign-in link found. Body: {body_text[:200]}")
+            return False
+        logger.info("Auth check: account link found — authenticated")
+        return True
 
     # -- Login -----------------------------------------------------------------
 
     async def login(self) -> bool:
-        """Launch a headed browser for manual Costco login."""
+        """Launch Chrome via CDP for manual Costco login."""
         async with self._lock:
             await self.close()
-            SESSION_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
 
-            self._playwright = await async_playwright().start()
-            self._browser = await self._playwright.chromium.launch(headless=False)
-            self._context = await self._browser.new_context(
-                user_agent=USER_AGENT,
-                viewport={"width": 1920, "height": 1080},
-                locale="en-US",
-                timezone_id="America/Los_Angeles",
-            )
-
-            page = await self._context.new_page()
-            await page.goto("https://www.costco.com/LogonForm")
+            ctx = await self.start()
+            page = await ctx.new_page()
+            await page.goto("https://www.costco.com")
 
             print("\n🔐 Please log in to Costco in the browser window.")
-            print(
-                "   Complete any verification if prompted."
-                " This window will close once login is detected.\n"
-            )
+            print("   Click 'Sign In' on the Costco homepage and complete login.")
+            print("   This window will close once login is detected.\n")
 
             try:
-                # Wait for redirect away from login page
+                # Wait for user to complete login
                 while True:
                     url = page.url.lower()
-                    if "logonform" not in url and "signin" not in url:
-                        # Verify we actually landed on an authenticated page
+                    if "logonform" not in url and "signin" not in url and "oauth" not in url:
+                        # Check if we see an account link (positive auth signal)
                         acct = await page.query_selector(
                             'a[href*="/AccountHomeCmd"], a[href*="/myaccount"]'
                         )
@@ -126,11 +164,16 @@ class CostcoSession:
             except Exception:
                 return False
 
-            await page.wait_for_timeout(3000)
-            await self.save_session()
-            print("✅ Login detected! Session saved.")
+            # Let cookies settle after login redirect
+            await page.wait_for_timeout(5000)
+
+            # Log what cookies we captured
+            cookies = await self._context.cookies()
+            cookie_names = [c["name"] for c in cookies]
+            logger.info(f"Login: captured {len(cookies)} cookies: {cookie_names}")
+
+            print("✅ Login detected! Session saved in Chrome profile.")
             await page.close()
-            await self.close()
             return True
 
     # -- Health / Auth ---------------------------------------------------------
@@ -141,10 +184,10 @@ class CostcoSession:
             page = await self._new_page()
             try:
                 await page.goto(
-                    "https://www.costco.com/myaccount",
+                    "https://www.costco.com",
                     wait_until="domcontentloaded",
                 )
-                await page.wait_for_timeout(2000)
+                await page.wait_for_timeout(3000)
 
                 authenticated = await self._verify_authenticated(page)
                 name = None
@@ -812,15 +855,21 @@ class CostcoSession:
     # -- Lifecycle -------------------------------------------------------------
 
     async def close(self):
-        if self._context:
-            await self._context.close()
-            self._context = None
+        """Disconnect from Chrome CDP (does not kill Chrome)."""
+        self._context = None
         if self._browser:
-            await self._browser.close()
             self._browser = None
         if self._playwright:
             await self._playwright.stop()
             self._playwright = None
+
+    async def shutdown(self):
+        """Full shutdown — disconnect CDP and kill the Chrome process."""
+        await self.close()
+        if self._chrome_process and self._chrome_process.poll() is None:
+            self._chrome_process.terminate()
+            self._chrome_process.wait(timeout=5)
+            self._chrome_process = None
 
 
 # Singleton instance

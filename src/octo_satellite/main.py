@@ -62,7 +62,7 @@ async def lifespan(app: FastAPI):
     with contextlib.suppress(asyncio.CancelledError):
         await heartbeat_task
     await amazon_session.close()
-    await costco_session.close()
+    await costco_session.shutdown()
 
 
 app = FastAPI(
