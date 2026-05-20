@@ -535,7 +535,7 @@ class CostcoSession:
 
                 # Get product title
                 title_el = await page.query_selector(
-                    'span[itemprop="name"], .product-title, h1[class*="product"]'
+                    'h1, span[itemprop="name"], .product-title, h1[class*="product"]'
                 )
                 title = None
                 if title_el:
@@ -563,6 +563,7 @@ class CostcoSession:
 
                 # Find and click Add to Cart
                 atc = await page.query_selector(
+                    '#Button_addToCartDrawer_pdp, '
                     '#add-to-cart-btn:not([disabled]), '
                     'button[data-testid="add-to-cart"]:not([disabled]), '
                     '#add-to-cart-button:not([disabled]), '
@@ -579,10 +580,11 @@ class CostcoSession:
                 await atc.click()
                 await page.wait_for_timeout(3000)
 
-                # Verify success — look for cart confirmation modal or redirect
+                # Verify success — look for cart confirmation drawer
                 confirm = await page.query_selector(
-                    '[class*="added-to-cart"], [class*="cart-confirm"], '
-                    '[class*="add-to-cart-success"], [class*="modal"] [class*="cart"]'
+                    '[role="dialog"]:has-text("Added to Cart"), '
+                    '.MuiDrawer-root:has-text("Added to Cart"), '
+                    '[class*="added-to-cart"], [class*="cart-confirm"]'
                 )
                 success = confirm is not None or "cart" in page.url.lower()
 
