@@ -79,9 +79,7 @@ def test_list_orders_expired(mock_session, client):
 
 @patch("octo_satellite.routers.costco.costco_session")
 def test_get_order_success(mock_session, client):
-    mock_session.get_order = AsyncMock(
-        return_value={"order_id": "12345678", "items": []}
-    )
+    mock_session.get_order = AsyncMock(return_value={"order_id": "12345678", "items": []})
     resp = client.get("/costco/orders/12345678")
     assert resp.status_code == 200
     assert resp.json()["order"]["order_id"] == "12345678"
@@ -157,9 +155,7 @@ def test_add_to_cart_expired(mock_session, client):
 
 @patch("octo_satellite.routers.costco.costco_session")
 def test_remove_from_cart_success(mock_session, client):
-    mock_session.remove_from_cart = AsyncMock(
-        return_value={"success": True, "item_id": "abc123"}
-    )
+    mock_session.remove_from_cart = AsyncMock(return_value={"success": True, "item_id": "abc123"})
     resp = client.delete("/costco/cart/abc123")
     assert resp.status_code == 200
     assert resp.json()["success"] is True
@@ -195,9 +191,7 @@ def test_search_success(mock_session, client):
 
 @patch("octo_satellite.routers.costco.costco_session")
 def test_search_expired(mock_session, client):
-    mock_session.search = AsyncMock(
-        return_value={"results": [], "error": "not_authenticated"}
-    )
+    mock_session.search = AsyncMock(return_value={"results": [], "error": "not_authenticated"})
     resp = client.get("/costco/search?q=test")
     assert resp.status_code == 401
 
@@ -232,9 +226,7 @@ def test_get_product_not_found(mock_session, client):
 
 @patch("octo_satellite.routers.costco.costco_session")
 def test_health_authenticated(mock_session, client):
-    mock_session.check_auth = AsyncMock(
-        return_value={"authenticated": True, "name": "Jeff"}
-    )
+    mock_session.check_auth = AsyncMock(return_value={"authenticated": True, "name": "Jeff"})
     resp = client.get("/costco/health")
     assert resp.status_code == 200
     assert resp.json()["authenticated"] is True
@@ -242,9 +234,7 @@ def test_health_authenticated(mock_session, client):
 
 @patch("octo_satellite.routers.costco.costco_session")
 def test_health_not_authenticated(mock_session, client):
-    mock_session.check_auth = AsyncMock(
-        return_value={"authenticated": False, "name": None}
-    )
+    mock_session.check_auth = AsyncMock(return_value={"authenticated": False, "name": None})
     resp = client.get("/costco/health")
     assert resp.status_code == 200
     assert resp.json()["authenticated"] is False

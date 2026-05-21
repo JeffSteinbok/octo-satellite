@@ -43,9 +43,7 @@ def _find_chrome() -> str:
         if candidate.exists():
             return str(candidate)
 
-    raise FileNotFoundError(
-        "Chrome not found. Install Google Chrome or set it in your PATH."
-    )
+    raise FileNotFoundError("Chrome not found. Install Google Chrome or set it in your PATH.")
 
 
 class CostcoSession:
@@ -125,19 +123,17 @@ class CostcoSession:
             logger.info("Auth check: on sign-in page")
             return False
         # Check for account link as positive signal
-        acct = await page.query_selector(
-            'a[href*="/AccountHomeCmd"], a[href*="/myaccount"]'
-        )
+        acct = await page.query_selector('a[href*="/AccountHomeCmd"], a[href*="/myaccount"]')
         if not acct:
             # Broader fallback: look for sign-in link absence as negative signal
-            sign_in = await page.query_selector(
-                'a[href*="/LogonForm"], a[id="header_sign_in"]'
-            )
+            sign_in = await page.query_selector('a[href*="/LogonForm"], a[id="header_sign_in"]')
             if sign_in:
                 logger.info("Auth check: sign-in link found — not authenticated")
                 return False
             # If neither account nor sign-in link found, check page content
-            body_text = await page.evaluate("() => document.body?.innerText?.substring(0, 500) || ''")
+            body_text = await page.evaluate(
+                "() => document.body?.innerText?.substring(0, 500) || ''"
+            )
             logger.info(f"Auth check: no account/sign-in link found. Body: {body_text[:200]}")
             return False
         logger.info("Auth check: account link found — authenticated")
@@ -201,8 +197,7 @@ class CostcoSession:
             name = None
             if authenticated:
                 name_el = await page.query_selector(
-                    "#costco-header-account-name, .account-name, "
-                    '.my-account-header [class*="name"]'
+                    '#costco-header-account-name, .account-name, .my-account-header [class*="name"]'
                 )
                 if name_el:
                     name = (await name_el.inner_text()).strip() or None
@@ -439,6 +434,7 @@ class CostcoSession:
             except Exception as e:
                 logger.error(f"get_cart failed: {e}")
                 return {"items": [], "subtotal": None, "error": str(e)}
+
     async def _scrape_cart(self, page: Page) -> dict:
         """Extract cart items from Costco cart page."""
         return await page.evaluate("""() => {
@@ -519,9 +515,7 @@ class CostcoSession:
                     return {"success": False, "error": "not_authenticated"}
 
                 # Find the product link from search results and navigate to it
-                product_link = await page.query_selector(
-                    f'a[href*=".product.{item_number}.html"]'
-                )
+                product_link = await page.query_selector(f'a[href*=".product.{item_number}.html"]')
                 if not product_link:
                     # Try direct product URL pattern
                     await page.goto(
@@ -550,7 +544,7 @@ class CostcoSession:
 
                 # Check availability
                 oos = await page.query_selector(
-                    '.out-of-stock-message, .oos-overlay, '
+                    ".out-of-stock-message, .oos-overlay, "
                     '[class*="out-of-stock"], [class*="outOfStock"]'
                 )
                 if oos:
@@ -563,10 +557,10 @@ class CostcoSession:
 
                 # Find and click Add to Cart
                 atc = await page.query_selector(
-                    '#Button_addToCartDrawer_pdp, '
-                    '#add-to-cart-btn:not([disabled]), '
+                    "#Button_addToCartDrawer_pdp, "
+                    "#add-to-cart-btn:not([disabled]), "
                     'button[data-testid="add-to-cart"]:not([disabled]), '
-                    '#add-to-cart-button:not([disabled]), '
+                    "#add-to-cart-button:not([disabled]), "
                     'input[value="Add to Cart"]:not([disabled])'
                 )
                 if not atc:
@@ -637,7 +631,7 @@ class CostcoSession:
                 confirm_btn = await page.query_selector(
                     'button[class*="confirm-remove"], '
                     'button[data-testid*="confirm"], '
-                    '.modal button.primary'
+                    ".modal button.primary"
                 )
                 if confirm_btn:
                     await confirm_btn.click()
@@ -743,9 +737,7 @@ class CostcoSession:
                 await page.wait_for_timeout(2000)
 
                 # Try to find and click through to the product page
-                product_link = await page.query_selector(
-                    f'a[href*=".product.{item_number}.html"]'
-                )
+                product_link = await page.query_selector(f'a[href*=".product.{item_number}.html"]')
                 if product_link:
                     await product_link.click()
                     await page.wait_for_timeout(2000)

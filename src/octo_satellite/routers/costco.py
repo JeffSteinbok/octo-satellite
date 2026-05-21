@@ -141,7 +141,5 @@ async def get_product(item_number: str, request: Request):
     status_code = 200 if product is not None else 404
     await log_request(request, "costco", f"items/{item_number}", status_code)
     if product is None:
-        raise HTTPException(
-            status_code=404, detail="Product not found or session expired."
-        )
+        raise HTTPException(status_code=404, detail="Product not found or session expired.")
     return {"provider": "costco", **product}
