@@ -229,9 +229,9 @@ class CostcoSession:
         """Fetch orders from Costco order history."""
         async with self._lock:
             page = await self._new_page()
-            url = f"https://www.costco.com/OrderStatusCmd?pageNum={page_num}"
-            await page.goto(url, wait_until="domcontentloaded")
-            await page.wait_for_timeout(3000)
+            url = "https://www.costco.com/myaccount/#/app/4900eb1f-0c10-4bd9-99c3-c59e6c1ecebf/ordersandpurchases"
+            await page.goto(url, wait_until="networkidle")
+            await page.wait_for_timeout(8000)
 
             if not await self._verify_authenticated(page):
                 return {
@@ -255,73 +255,84 @@ class CostcoSession:
             }
 
     async def _scrape_order_list(self, page: Page) -> list[dict]:
-        """Extract order info from Costco order history page."""
+        """Extract order info from Costco myaccount order history (MUI SPA)."""
         return await page.evaluate("""() => {
             const orders = [];
-            // Costco renders order cards with order number, date, total, status
-            const cards = document.querySelectorAll(
-                '.order-card, .order-tile, [class*="orderCard"], [class*="order-history-item"]'
+            // Each order card has a link with automation-id="OnlineOrdersViewOrchangeOrder"
+            // and an id like "orderNumber_XXXXXXXXXX"
+            const orderLinks = document.querySelectorAll(
+                'a[automation-id="OnlineOrdersViewOrchangeOrder"]'
             );
-            for (const card of cards) {
+            // Deduplicate by order ID (multiple links per order)
+            const seen = new Set();
+            for (const link of orderLinks) {
+                const idAttr = link.id || '';
+                const match = idAttr.match(/orderNumber_(\\d+)/);
+                if (!match || seen.has(match[1])) continue;
+                const orderId = match[1];
+                seen.add(orderId);
+
                 const order = {
-                    order_id: null,
+                    order_id: orderId,
                     date: null,
                     total: null,
                     status: null,
-                    items: []
+                    items: [],
+                    tracking: []
                 };
 
-                // Order number — look for links or text with order ID patterns
-                const orderLink = card.querySelector(
-                    'a[href*="OrderStatusDetailView"], a[href*="orderId"]'
+                // Date — element with id="orderDate_XXXXXXXXXX"
+                const dateEl = document.getElementById('orderDate_' + orderId);
+                if (dateEl) order.date = dateEl.textContent.trim();
+
+                // Total — element with id="totalPrice_XXXXXXXXXX"
+                const totalEl = document.getElementById('totalPrice_' + orderId);
+                if (totalEl) {
+                    const m = totalEl.textContent.match(/\\$(\\d[\\d,.]+)/);
+                    if (m) order.total = '$' + m[1];
+                }
+
+                // Walk up to the card container (css-z91irn) for items/status
+                let card = link;
+                while (card && !(card.className && card.className.includes('css-z91irn'))) {
+                    card = card.parentElement;
+                }
+                if (!card) continue;
+
+                // Status — shipped/delivered lines
+                const statusHeaders = card.querySelectorAll(
+                    '.MuiTypography-t4'
                 );
-                if (orderLink) {
-                    const match = orderLink.href.match(/orderId=([^&]+)/i)
-                        || orderLink.href.match(/orderNumber=([^&]+)/i);
-                    if (match) order.order_id = match[1];
-                    if (!order.order_id) {
-                        const text = orderLink.textContent.trim();
-                        if (/^\\d{5,}$/.test(text)) order.order_id = text;
+                const statuses = [];
+                for (const h of statusHeaders) {
+                    const txt = h.textContent.trim();
+                    if (txt.match(/^(Shipped|Delivered|Processing|Cancelled)/i)) {
+                        statuses.push(txt.replace(/Order \\d+/, '').trim());
+                    }
+                }
+                if (statuses.length) order.status = statuses[0];
+
+                // Item names — product links to costco.com product pages
+                const itemLinks = card.querySelectorAll(
+                    'a[href*="costco.com/"][href*=".product."]'
+                );
+                for (const il of itemLinks) {
+                    const text = il.textContent.trim();
+                    if (text && text.length > 3 && !order.items.includes(text)) {
+                        order.items.push(text);
                     }
                 }
 
-                // Fallback: any text that looks like an order number
-                if (!order.order_id) {
-                    const allText = card.textContent;
-                    const numMatch = allText.match(/Order\\s*#?\\s*(\\d{5,})/i);
-                    if (numMatch) order.order_id = numMatch[1];
+                // Tracking numbers — links whose text looks like a tracking number
+                const allLinks = card.querySelectorAll('a');
+                for (const tl of allLinks) {
+                    const txt = tl.textContent.trim();
+                    if (txt && /^#?[A-Z0-9]{10,}$/.test(txt)) {
+                        order.tracking.push(txt.replace(/^#/, ''));
+                    }
                 }
 
-                // Date
-                const dateMatch = card.textContent.match(
-                    /(?:Ordered|Placed|Date)[:\\s]*([A-Z][a-z]+ \\d{1,2},? \\d{4})/i
-                );
-                if (dateMatch) order.date = dateMatch[1];
-
-                // Total
-                const totalMatch = card.textContent.match(
-                    /(?:Total|Amount)[:\\s]*\\$(\\d[\\d,.]+)/i
-                );
-                if (totalMatch) order.total = '$' + totalMatch[1];
-
-                // Status
-                const statusEl = card.querySelector(
-                    '[class*="status"], [class*="tracking"], .order-status'
-                );
-                if (statusEl) order.status = statusEl.textContent.trim();
-
-                // Item names
-                const itemEls = card.querySelectorAll(
-                    '[class*="product-name"], [class*="item-name"], [class*="productTitle"]'
-                );
-                for (const el of itemEls) {
-                    const text = el.textContent.trim();
-                    if (text && !order.items.includes(text)) order.items.push(text);
-                }
-
-                if (order.order_id || order.items.length) {
-                    orders.push(order);
-                }
+                orders.push(order);
             }
             return orders;
         }""")
