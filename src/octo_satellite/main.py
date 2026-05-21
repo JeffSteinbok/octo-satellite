@@ -10,9 +10,8 @@ from fastapi.responses import HTMLResponse
 from octo_satellite.config import settings
 from octo_satellite.localhost import LocalhostOnlyMiddleware
 from octo_satellite.providers.amazon import amazon_session
-from octo_satellite.providers.costco import costco_session
 from octo_satellite.providers.monarch import monarch_session
-from octo_satellite.routers import amazon, costco, monarch
+from octo_satellite.routers import amazon, monarch
 
 logger = logging.getLogger("octo_satellite")
 
@@ -31,14 +30,6 @@ async def _heartbeat_loop():
                 logger.warning("Amazon session expired. Re-login required.")
         except Exception as e:
             logger.error(f"Amazon heartbeat failed: {e}")
-
-        # Costco
-        try:
-            alive = await costco_session.heartbeat()
-            if not alive:
-                logger.warning("Costco session expired. Re-login required.")
-        except Exception as e:
-            logger.error(f"Costco heartbeat failed: {e}")
 
         # Monarch
         try:
@@ -62,7 +53,6 @@ async def lifespan(app: FastAPI):
     with contextlib.suppress(asyncio.CancelledError):
         await heartbeat_task
     await amazon_session.close()
-    await costco_session.shutdown()
 
 
 app = FastAPI(
@@ -72,7 +62,6 @@ app = FastAPI(
 )
 
 app.include_router(amazon.router)
-app.include_router(costco.router)
 app.include_router(monarch.router)
 
 if settings.localhost_only:
