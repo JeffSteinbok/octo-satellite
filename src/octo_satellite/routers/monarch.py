@@ -85,6 +85,22 @@ async def get_net_worth(request: Request):
     return {"provider": "monarch", **result}
 
 
+@router.get("/investments")
+async def get_investments(request: Request, account_id: int | None = None):
+    """Get investment account positions (holdings).
+
+    Query params:
+        account_id: Optional — if provided, returns positions for that account only.
+                    Otherwise returns positions for all investment accounts.
+    """
+    result = await monarch_session.get_investment_positions(account_id=account_id)
+    status_code = 200 if result is not None else 401
+    await log_request(request, "monarch", "investments", status_code)
+    if result is None:
+        raise HTTPException(status_code=401, detail="Session expired. Re-login required.")
+    return {"provider": "monarch", **result}
+
+
 @router.get("/spending")
 async def get_spending(request: Request, months: int = 3):
     """Get spending trends — income, expenses, savings by month.

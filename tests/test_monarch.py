@@ -188,3 +188,71 @@ def test_get_spending_expired_session(mock_session, client):
     mock_session.get_spending = AsyncMock(return_value=None)
     resp = client.get("/monarch/spending")
     assert resp.status_code == 401
+
+
+# -- Investments --
+
+MOCK_INVESTMENTS = {
+    "accounts": [
+        {
+            "account_id": 123,
+            "total_value": 50000.0,
+            "total_cost_basis": 40000.0,
+            "total_gain_loss": 10000.0,
+            "positions": [
+                {
+                    "name": "Apple Inc.",
+                    "ticker": "AAPL",
+                    "quantity": 100,
+                    "cost_basis": 15000.0,
+                    "total_value": 20000.0,
+                    "current_price": 200.0,
+                    "price_change_dollars": 2.50,
+                    "price_change_percent": 1.25,
+                    "last_synced": "2026-05-09T17:00:00+00:00",
+                },
+                {
+                    "name": "Vanguard S&P 500 ETF",
+                    "ticker": "VOO",
+                    "quantity": 50,
+                    "cost_basis": 25000.0,
+                    "total_value": 30000.0,
+                    "current_price": 600.0,
+                    "price_change_dollars": -1.00,
+                    "price_change_percent": -0.17,
+                    "last_synced": "2026-05-09T17:00:00+00:00",
+                },
+            ],
+        }
+    ]
+}
+
+
+@patch("octo_satellite.routers.monarch.monarch_session")
+def test_get_investments_success(mock_session, client):
+    mock_session.get_investment_positions = AsyncMock(return_value=MOCK_INVESTMENTS)
+    resp = client.get("/monarch/investments")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["provider"] == "monarch"
+    assert len(data["accounts"]) == 1
+    account = data["accounts"][0]
+    assert account["total_value"] == 50000.0
+    assert account["total_gain_loss"] == 10000.0
+    assert len(account["positions"]) == 2
+    assert account["positions"][0]["ticker"] == "AAPL"
+
+
+@patch("octo_satellite.routers.monarch.monarch_session")
+def test_get_investments_with_account_id(mock_session, client):
+    mock_session.get_investment_positions = AsyncMock(return_value=MOCK_INVESTMENTS)
+    resp = client.get("/monarch/investments?account_id=123")
+    assert resp.status_code == 200
+    mock_session.get_investment_positions.assert_called_once_with(account_id=123)
+
+
+@patch("octo_satellite.routers.monarch.monarch_session")
+def test_get_investments_expired_session(mock_session, client):
+    mock_session.get_investment_positions = AsyncMock(return_value=None)
+    resp = client.get("/monarch/investments")
+    assert resp.status_code == 401

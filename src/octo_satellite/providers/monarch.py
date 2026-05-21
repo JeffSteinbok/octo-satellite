@@ -170,6 +170,73 @@ class MonarchSession:
 
         return summary
 
+    async def get_investment_positions(self, account_id: int | None = None) -> dict | None:
+        """Get investment holdings for one or all investment accounts.
+
+        If account_id is provided, returns positions for that account only.
+        Otherwise, returns positions for all active investment-type accounts.
+        """
+        mm = self._get_client()
+        try:
+            if account_id is not None:
+                account_ids = [account_id]
+            else:
+                raw = await mm.get_accounts()
+                investment_types = {"brokerage", "depository", "other_investment"}
+                account_ids = [
+                    a["id"]
+                    for a in raw.get("accounts", [])
+                    if not a.get("isHidden", False)
+                    and not a.get("deactivatedAt")
+                    and a.get("type", {}).get("name", "").lower() in investment_types
+                ]
+                if not account_ids:
+                    return {"accounts": []}
+
+            results = []
+            for aid in account_ids:
+                holdings_raw = await mm.get_account_holdings(aid)
+                edges = (
+                    holdings_raw.get("portfolio", {}).get("aggregateHoldings", {}).get("edges", [])
+                )
+
+                positions = []
+                for edge in edges:
+                    node = edge.get("node", {})
+                    security = node.get("security") or {}
+                    positions.append(
+                        {
+                            "name": security.get("name") or security.get("ticker", "Unknown"),
+                            "ticker": security.get("ticker"),
+                            "quantity": node.get("quantity"),
+                            "cost_basis": node.get("basis"),
+                            "total_value": node.get("totalValue"),
+                            "current_price": security.get("currentPrice"),
+                            "price_change_dollars": node.get("securityPriceChangeDollars"),
+                            "price_change_percent": node.get("securityPriceChangePercent"),
+                            "last_synced": node.get("lastSyncedAt"),
+                        }
+                    )
+
+                positions.sort(key=lambda p: p["total_value"] or 0, reverse=True)
+                total_value = sum(p["total_value"] or 0 for p in positions)
+                total_basis = sum(p["cost_basis"] or 0 for p in positions)
+
+                results.append(
+                    {
+                        "account_id": aid,
+                        "total_value": total_value,
+                        "total_cost_basis": total_basis,
+                        "total_gain_loss": total_value - total_basis,
+                        "positions": positions,
+                    }
+                )
+
+            return {"accounts": results}
+        except Exception as e:
+            logger.error(f"Monarch get_investment_positions failed: {e}")
+            return None
+
     async def get_net_worth(self) -> dict | None:
         """Get net worth from Monarch's aggregate snapshots.
 
