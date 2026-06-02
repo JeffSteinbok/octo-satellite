@@ -439,38 +439,71 @@ class AmazonSession:
         if total_val:
             order["total"] = total_val
 
-        # Delivery status
-        status_el = await page.query_selector(
-            ".delivery-box__primary-text, .pt-promise-main-slot, h1.pt-promise-main-slot"
-        )
-        if status_el:
-            order["status"] = (await status_el.inner_text()).strip()
-        else:
-            # Fallback: find bold text with delivery keywords
-            status_val = await page.evaluate("""() => {
-                const bolds = document.querySelectorAll('.a-text-bold');
-                for (const b of bolds) {
-                    const t = b.textContent.trim();
-                    if (/deliver|arriv|ship|cancel/i.test(t)) return t;
-                }
-                return null;
-            }""")
-            if status_val:
-                order["status"] = status_val
+        # Delivery status — use the od-status-message heading which contains
+        # the full status across multiple spans (e.g. "Arriving Saturday").
+        status_val = await page.evaluate("""() => {
+            // Primary: the h4.od-status-message holds the complete status text
+            const msg = document.querySelector('.od-status-message');
+            if (msg) return msg.textContent.trim();
+            // Fallback: delivery-box or promise slot
+            const box = document.querySelector('.delivery-box');
+            if (box) {
+                const primary = box.querySelector('.delivery-box__primary-text');
+                if (primary) return primary.textContent.trim();
+            }
+            const promise = document.querySelector(
+                '.pt-promise-main-slot, h1.pt-promise-main-slot');
+            if (promise) return promise.textContent.trim();
+            // Last resort: bold text with delivery keywords
+            const bolds = document.querySelectorAll('.a-text-bold');
+            for (const b of bolds) {
+                const t = b.textContent.trim();
+                if (/deliver|arriv|ship|cancel/i.test(t)) return t;
+            }
+            return null;
+        }""")
+        if status_val:
+            order["status"] = status_val
 
         # Items — detail page uses product links rather than .yohtmlc-product-title
         item_els = await page.query_selector_all(".yohtmlc-product-title")
         if not item_els:
-            # Fallback: product links (filter out unrelated card/promo links)
+            # Fallback: product links scoped to the order shipment section
+            # to avoid pulling in recommended/sponsored products.
             item_els = await page.evaluate("""() => {
-                const links = document.querySelectorAll('a[href*="/dp/"]');
+                // Scope to the shipment section(s) which contain the actual order items
+                const containers = document.querySelectorAll(
+                    '.a-box.shipment, .od-shipment-container, [data-component="shipments"]'
+                );
                 const titles = [];
-                for (const a of links) {
-                    const text = a.textContent.trim();
-                    if (text && text.length > 10
-                        && !text.includes('Card')
-                        && !titles.includes(text)) {
-                        titles.push(text);
+                const sources = containers.length
+                    ? containers
+                    : [document.querySelector('.order-details-box, #orderDetails')];
+                for (const container of sources) {
+                    if (!container) continue;
+                    const links = container.querySelectorAll('a[href*="/dp/"]');
+                    for (const a of links) {
+                        const text = a.textContent.trim();
+                        if (text && text.length > 10
+                            && !text.includes('Card')
+                            && !titles.includes(text)) {
+                            titles.push(text);
+                        }
+                    }
+                }
+                // If scoped search found nothing, try the first few /dp/ links
+                // on the page but cap at a reasonable number to avoid recommendations
+                if (titles.length === 0) {
+                    const links = document.querySelectorAll('a[href*="/dp/"]');
+                    for (const a of links) {
+                        const text = a.textContent.trim();
+                        if (text && text.length > 10
+                            && !text.includes('Card')
+                            && !/^\\$|out of.*stars/i.test(text)
+                            && !titles.includes(text)) {
+                            titles.push(text);
+                            if (titles.length >= 5) break;
+                        }
                     }
                 }
                 return titles;
