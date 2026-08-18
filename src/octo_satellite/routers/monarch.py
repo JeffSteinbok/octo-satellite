@@ -137,6 +137,51 @@ async def get_investments(request: Request, account_id: int | None = None):
     return {"provider": "monarch", **result}
 
 
+@router.get("/categories")
+async def get_categories(request: Request):
+    """List transaction categories (id, name, group) for use as filters."""
+    result = await monarch_session.get_categories()
+    status_code = 200 if result is not None else 401
+    await log_request(request, "monarch", "categories", status_code)
+    if result is None:
+        raise HTTPException(status_code=401, detail="Session expired. Re-login required.")
+    return {"provider": "monarch", **result}
+
+
+@router.get("/merchants")
+async def get_merchants(
+    request: Request,
+    months: int = 3,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    category: str | None = None,
+    limit: int | None = None,
+):
+    """Break spending down by merchant — aggregate totals only, no transactions.
+
+    Query params:
+        category: Optional category or category-group name (case-insensitive)
+                  to scope the breakdown, e.g. `?category=Travel & Lifestyle`
+                  or `?category=Air Travel`. See GET /monarch/categories.
+        months: Lookback window when no dates are given (default: 3).
+        start_date: Optional ISO date (YYYY-MM-DD). Takes precedence over months.
+        end_date: Optional ISO date (YYYY-MM-DD). Defaults to today.
+        limit: Optional cap on the number of merchants returned (top spend first).
+    """
+    start, end = _validate_range(start_date, end_date)
+    result = await monarch_session.get_merchant_spending(
+        months=months, start_date=start, end_date=end, category=category, limit=limit
+    )
+    if result is not None and result.get("error") == "category_not_found":
+        await log_request(request, "monarch", "merchants", 404)
+        raise HTTPException(status_code=404, detail=f"Unknown category: '{result['category']}'.")
+    status_code = 200 if result is not None else 401
+    await log_request(request, "monarch", "merchants", status_code)
+    if result is None:
+        raise HTTPException(status_code=401, detail="Session expired. Re-login required.")
+    return {"provider": "monarch", **result}
+
+
 @router.get("/spending")
 async def get_spending(
     request: Request,

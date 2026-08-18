@@ -248,6 +248,91 @@ def test_get_spending_start_after_end(mock_session, client):
     mock_session.get_spending.assert_not_called()
 
 
+# -- Merchants / Categories --
+
+MOCK_CATEGORIES = {
+    "categories": [
+        {"id": "1", "name": "Airfare", "group": "Travel", "type": "expense"},
+        {"id": "2", "name": "Travel", "group": "Travel", "type": "expense"},
+    ]
+}
+
+MOCK_MERCHANTS = {
+    "period_start": "2026-01-01",
+    "period_end": "2026-12-31",
+    "total_spent": -1200.0,
+    "category": {"id": "2", "name": "Travel"},
+    "merchants": [
+        {"id": "m1", "name": "Delta", "logo_url": None, "amount": -800.0, "income": 0},
+        {"id": "m2", "name": "Airbnb", "logo_url": None, "amount": -400.0, "income": 0},
+    ],
+}
+
+
+@patch("octo_satellite.routers.monarch.monarch_session")
+def test_get_categories_success(mock_session, client):
+    mock_session.get_categories = AsyncMock(return_value=MOCK_CATEGORIES)
+    resp = client.get("/monarch/categories")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["provider"] == "monarch"
+    assert len(data["categories"]) == 2
+    assert data["categories"][1]["name"] == "Travel"
+
+
+@patch("octo_satellite.routers.monarch.monarch_session")
+def test_get_categories_expired_session(mock_session, client):
+    mock_session.get_categories = AsyncMock(return_value=None)
+    resp = client.get("/monarch/categories")
+    assert resp.status_code == 401
+
+
+@patch("octo_satellite.routers.monarch.monarch_session")
+def test_get_merchants_success(mock_session, client):
+    mock_session.get_merchant_spending = AsyncMock(return_value=MOCK_MERCHANTS)
+    resp = client.get("/monarch/merchants")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["provider"] == "monarch"
+    assert data["merchants"][0]["name"] == "Delta"
+
+
+@patch("octo_satellite.routers.monarch.monarch_session")
+def test_get_merchants_by_category_and_range(mock_session, client):
+    mock_session.get_merchant_spending = AsyncMock(return_value=MOCK_MERCHANTS)
+    resp = client.get(
+        "/monarch/merchants?category=Travel&start_date=2026-01-01&end_date=2026-12-31&limit=5"
+    )
+    assert resp.status_code == 200
+    mock_session.get_merchant_spending.assert_called_once_with(
+        months=3, start_date="2026-01-01", end_date="2026-12-31", category="Travel", limit=5
+    )
+
+
+@patch("octo_satellite.routers.monarch.monarch_session")
+def test_get_merchants_unknown_category(mock_session, client):
+    mock_session.get_merchant_spending = AsyncMock(
+        return_value={"error": "category_not_found", "category": "Nope"}
+    )
+    resp = client.get("/monarch/merchants?category=Nope")
+    assert resp.status_code == 404
+
+
+@patch("octo_satellite.routers.monarch.monarch_session")
+def test_get_merchants_invalid_date(mock_session, client):
+    mock_session.get_merchant_spending = AsyncMock(return_value=MOCK_MERCHANTS)
+    resp = client.get("/monarch/merchants?start_date=bad")
+    assert resp.status_code == 422
+    mock_session.get_merchant_spending.assert_not_called()
+
+
+@patch("octo_satellite.routers.monarch.monarch_session")
+def test_get_merchants_expired_session(mock_session, client):
+    mock_session.get_merchant_spending = AsyncMock(return_value=None)
+    resp = client.get("/monarch/merchants")
+    assert resp.status_code == 401
+
+
 # -- Investments --
 
 MOCK_INVESTMENTS = {

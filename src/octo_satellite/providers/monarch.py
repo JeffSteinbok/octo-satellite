@@ -348,6 +348,170 @@ class MonarchSession:
             logger.error(f"Monarch get_spending failed: {e}")
             return None
 
+    async def get_categories(self) -> dict | None:
+        """List transaction categories (id, name, group) for use as filters."""
+        mm = self._get_client()
+        try:
+            raw = await mm.get_transaction_categories()
+        except Exception as e:
+            logger.error(f"Monarch get_categories failed: {e}")
+            return None
+
+        categories = []
+        for cat in raw.get("categories", []):
+            group = cat.get("group") or {}
+            categories.append(
+                {
+                    "id": cat.get("id"),
+                    "name": cat.get("name"),
+                    "group": group.get("name"),
+                    "group_id": group.get("id"),
+                    "type": group.get("type"),
+                }
+            )
+        categories.sort(key=lambda c: (c["group"] or "", c["name"] or ""))
+        return {"categories": categories}
+
+    async def get_merchant_spending(
+        self,
+        months: int = 3,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        category: str | None = None,
+        limit: int | None = None,
+    ) -> dict | None:
+        """Break spending down by merchant, optionally scoped to one category.
+
+        Returns per-merchant aggregate totals only — no individual transaction
+        details. ``category`` (case-insensitive) matches either a leaf category
+        name (e.g. "Air Travel") or a category *group* name (e.g. "Travel &
+        Lifestyle"); a group match aggregates every category within it. If the
+        name matches neither, ``{"error": "category_not_found"}`` is returned.
+
+        ``start_date``/``end_date`` (ISO ``YYYY-MM-DD``) take precedence over
+        ``months``; a missing bound defaults to today (end) or ``months`` back.
+        """
+        from datetime import date, timedelta
+
+        from gql import gql
+
+        mm = self._get_client()
+        try:
+            end_str = end_date or date.today().isoformat()
+            if start_date is not None:
+                start_str = start_date
+            else:
+                start_str = (date.fromisoformat(end_str) - timedelta(days=months * 30)).isoformat()
+
+            category_ids: list[str] = []
+            category_group_ids: list[str] = []
+            matched_category = None
+            if category is not None:
+                cats_result = await self.get_categories()
+                if cats_result is None:
+                    return None
+                wanted = category.lower()
+                leaf = next(
+                    (c for c in cats_result["categories"] if (c["name"] or "").lower() == wanted),
+                    None,
+                )
+                if leaf is not None:
+                    category_ids = [leaf["id"]]
+                    matched_category = {
+                        "id": leaf["id"],
+                        "name": leaf["name"],
+                        "kind": "category",
+                    }
+                else:
+                    group = next(
+                        (
+                            c
+                            for c in cats_result["categories"]
+                            if (c["group"] or "").lower() == wanted and c["group_id"]
+                        ),
+                        None,
+                    )
+                    if group is None:
+                        return {"error": "category_not_found", "category": category}
+                    category_group_ids = [group["group_id"]]
+                    matched_category = {
+                        "id": group["group_id"],
+                        "name": group["group"],
+                        "kind": "category_group",
+                    }
+
+            query = gql(
+                """
+                query Octo_MerchantAggregates($filters: TransactionFilterInput) {
+                  byMerchant: aggregates(filters: $filters, groupBy: ["merchant"]) {
+                    groupBy {
+                      merchant {
+                        id
+                        name
+                        logoUrl
+                      }
+                    }
+                    summary {
+                      sumIncome
+                      sumExpense
+                    }
+                  }
+                }
+                """
+            )
+            variables = {
+                "filters": {
+                    "search": "",
+                    "categories": category_ids,
+                    "categoryGroups": category_group_ids,
+                    "accounts": [],
+                    "tags": [],
+                    "startDate": start_str,
+                    "endDate": end_str,
+                }
+            }
+            result = await mm.gql_call(
+                operation="Octo_MerchantAggregates",
+                graphql_query=query,
+                variables=variables,
+            )
+
+            merchants = []
+            for entry in result.get("byMerchant", []):
+                merchant = entry.get("groupBy", {}).get("merchant") or {}
+                summary = entry.get("summary", {})
+                merchants.append(
+                    {
+                        "id": merchant.get("id"),
+                        "name": merchant.get("name", "Unknown"),
+                        "logo_url": merchant.get("logoUrl"),
+                        "amount": summary.get("sumExpense", 0),
+                        "income": summary.get("sumIncome", 0),
+                    }
+                )
+
+            # Sort by expense magnitude (largest spend first)
+            merchants.sort(key=lambda m: abs(m["amount"] or 0), reverse=True)
+            # Total across all merchants, computed before applying any limit
+            total_spent = sum(m["amount"] or 0 for m in merchants)
+            merchant_count = len(merchants)
+            if limit is not None:
+                merchants = merchants[:limit]
+
+            response = {
+                "period_start": start_str,
+                "period_end": end_str,
+                "total_spent": total_spent,
+                "merchant_count": merchant_count,
+                "merchants": merchants,
+            }
+            if matched_category is not None:
+                response["category"] = matched_category
+            return response
+        except Exception as e:
+            logger.error(f"Monarch get_merchant_spending failed: {e}")
+            return None
+
 
 # Singleton instance
 monarch_session = MonarchSession()

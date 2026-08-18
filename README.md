@@ -46,6 +46,8 @@ API-based via [monarchmoneycommunity](https://github.com/bradleyseanf/monarchmon
 | `/monarch/accounts` | GET | Accounts grouped by type with balances |
 | `/monarch/net-worth` | GET | Net worth from Monarch's aggregate snapshots (`?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD` for daily history) |
 | `/monarch/spending` | GET | Spending trends: income, expenses, savings (`?months=3` or `?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD`) |
+| `/monarch/categories` | GET | List transaction categories (id, name, group) for use as filters |
+| `/monarch/merchants` | GET | Merchant spend breakdown — aggregate totals only, no transactions (`?category=Travel & Lifestyle&start_date=...&end_date=...&limit=N`) |
 | `/monarch/investments` | GET | Investment account positions/holdings (`?account_id=N`) |
 
 ## Setup
