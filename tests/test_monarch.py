@@ -169,6 +169,38 @@ def test_get_net_worth_expired_session(mock_session, client):
     assert resp.status_code == 401
 
 
+MOCK_NET_WORTH_HISTORY = {
+    "net_worth": 250000.0,
+    "as_of": "2026-05-09",
+    "period_start": "2026-05-01",
+    "period_end": "2026-05-09",
+    "history": [
+        {"date": "2026-05-01", "net_worth": 240000.0},
+        {"date": "2026-05-09", "net_worth": 250000.0},
+    ],
+}
+
+
+@patch("octo_satellite.routers.monarch.monarch_session")
+def test_get_net_worth_date_range(mock_session, client):
+    mock_session.get_net_worth = AsyncMock(return_value=MOCK_NET_WORTH_HISTORY)
+    resp = client.get("/monarch/net-worth?start_date=2026-05-01&end_date=2026-05-09")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["history"]) == 2
+    mock_session.get_net_worth.assert_called_once_with(
+        start_date="2026-05-01", end_date="2026-05-09"
+    )
+
+
+@patch("octo_satellite.routers.monarch.monarch_session")
+def test_get_net_worth_invalid_date(mock_session, client):
+    mock_session.get_net_worth = AsyncMock(return_value=MOCK_NET_WORTH)
+    resp = client.get("/monarch/net-worth?end_date=2026-13-01")
+    assert resp.status_code == 422
+    mock_session.get_net_worth.assert_not_called()
+
+
 # -- Spending --
 
 
@@ -188,6 +220,32 @@ def test_get_spending_expired_session(mock_session, client):
     mock_session.get_spending = AsyncMock(return_value=None)
     resp = client.get("/monarch/spending")
     assert resp.status_code == 401
+
+
+@patch("octo_satellite.routers.monarch.monarch_session")
+def test_get_spending_date_range(mock_session, client):
+    mock_session.get_spending = AsyncMock(return_value=MOCK_SPENDING)
+    resp = client.get("/monarch/spending?start_date=2026-01-01&end_date=2026-03-31")
+    assert resp.status_code == 200
+    mock_session.get_spending.assert_called_once_with(
+        months=3, start_date="2026-01-01", end_date="2026-03-31"
+    )
+
+
+@patch("octo_satellite.routers.monarch.monarch_session")
+def test_get_spending_invalid_date(mock_session, client):
+    mock_session.get_spending = AsyncMock(return_value=MOCK_SPENDING)
+    resp = client.get("/monarch/spending?start_date=not-a-date")
+    assert resp.status_code == 422
+    mock_session.get_spending.assert_not_called()
+
+
+@patch("octo_satellite.routers.monarch.monarch_session")
+def test_get_spending_start_after_end(mock_session, client):
+    mock_session.get_spending = AsyncMock(return_value=MOCK_SPENDING)
+    resp = client.get("/monarch/spending?start_date=2026-05-01&end_date=2026-01-01")
+    assert resp.status_code == 422
+    mock_session.get_spending.assert_not_called()
 
 
 # -- Investments --

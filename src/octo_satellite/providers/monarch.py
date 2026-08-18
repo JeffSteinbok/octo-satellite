@@ -237,47 +237,71 @@ class MonarchSession:
             logger.error(f"Monarch get_investment_positions failed: {e}")
             return None
 
-    async def get_net_worth(self) -> dict | None:
+    async def get_net_worth(
+        self, start_date: str | None = None, end_date: str | None = None
+    ) -> dict | None:
         """Get net worth from Monarch's aggregate snapshots.
 
-        Returns the most recent net worth value as calculated by Monarch
-        (respects includeInNetWorth account settings).
+        Without a date range, returns the most recent net worth value as
+        calculated by Monarch (respects includeInNetWorth account settings).
+
+        If start_date and/or end_date (ISO ``YYYY-MM-DD``) are provided, returns
+        the full history of daily snapshots over that range under ``history``,
+        with ``net_worth``/``as_of`` reflecting the latest snapshot in the range.
         """
         from datetime import date, timedelta
 
         mm = self._get_client()
         try:
             today = date.today()
-            start = today - timedelta(days=1)
-            result = await mm.get_aggregate_snapshots(
-                start_date=start.isoformat(), end_date=today.isoformat()
-            )
+            ranged = start_date is not None or end_date is not None
+            end = end_date or today.isoformat()
+            start = start_date or (date.fromisoformat(end) - timedelta(days=1)).isoformat()
+            result = await mm.get_aggregate_snapshots(start_date=start, end_date=end)
             snapshots = result.get("aggregateSnapshots", [])
             if not snapshots:
                 return None
-            # Use the most recent snapshot
+            # Use the most recent snapshot for the headline value
             latest = snapshots[-1]
-            return {
+            response = {
                 "net_worth": latest["balance"],
                 "as_of": latest["date"],
             }
+            if ranged:
+                response["period_start"] = start
+                response["period_end"] = end
+                response["history"] = [
+                    {"date": s["date"], "net_worth": s["balance"]} for s in snapshots
+                ]
+            return response
         except Exception as e:
             logger.error(f"Monarch get_net_worth failed: {e}")
             return None
 
-    async def get_spending(self, months: int = 3) -> dict | None:
+    async def get_spending(
+        self,
+        months: int = 3,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> dict | None:
         """Get spending trends via cashflow APIs.
 
         Returns overall summary (income/expenses/savings) and breakdown by category.
+
+        If start_date and/or end_date (ISO ``YYYY-MM-DD``) are provided, they take
+        precedence over ``months``. A missing bound defaults to today (end) or
+        ``months`` before the end date (start).
         """
         from datetime import date, timedelta
 
         mm = self._get_client()
         try:
             today = date.today()
-            start = today - timedelta(days=months * 30)
-            start_str = start.isoformat()
-            end_str = today.isoformat()
+            end_str = end_date or today.isoformat()
+            if start_date is not None:
+                start_str = start_date
+            else:
+                start_str = (date.fromisoformat(end_str) - timedelta(days=months * 30)).isoformat()
 
             summary_result = await mm.get_cashflow_summary(start_date=start_str, end_date=end_str)
             cashflow_result = await mm.get_cashflow(start_date=start_str, end_date=end_str)

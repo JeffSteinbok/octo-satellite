@@ -11,6 +11,33 @@ router = APIRouter(
 )
 
 
+def _validate_date(value: str | None, field: str) -> str | None:
+    """Validate an optional ISO ``YYYY-MM-DD`` date string, raising 422 if invalid."""
+    if value is None:
+        return None
+    from datetime import date
+
+    try:
+        return date.fromisoformat(value).isoformat()
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid {field}: '{value}'. Expected ISO format YYYY-MM-DD.",
+        ) from None
+
+
+def _validate_range(start_date: str | None, end_date: str | None) -> tuple[str | None, str | None]:
+    """Validate an optional date range and ensure start is not after end."""
+    start = _validate_date(start_date, "start_date")
+    end = _validate_date(end_date, "end_date")
+    if start is not None and end is not None and start > end:
+        raise HTTPException(
+            status_code=422,
+            detail=f"start_date ({start}) must not be after end_date ({end}).",
+        )
+    return start, end
+
+
 @router.get("/health")
 async def health(request: Request):
     """Verify Monarch Money session is authenticated."""
@@ -75,9 +102,18 @@ async def get_accounts(request: Request):
 
 
 @router.get("/net-worth")
-async def get_net_worth(request: Request):
-    """Get net worth from Monarch (uses account inclusion settings)."""
-    result = await monarch_session.get_net_worth()
+async def get_net_worth(
+    request: Request, start_date: str | None = None, end_date: str | None = None
+):
+    """Get net worth from Monarch (uses account inclusion settings).
+
+    Query params:
+        start_date: Optional ISO date (YYYY-MM-DD). If provided (with or without
+                    end_date), returns the daily snapshot history over the range.
+        end_date: Optional ISO date (YYYY-MM-DD). Defaults to today.
+    """
+    start, end = _validate_range(start_date, end_date)
+    result = await monarch_session.get_net_worth(start_date=start, end_date=end)
     status_code = 200 if result is not None else 401
     await log_request(request, "monarch", "net-worth", status_code)
     if result is None:
@@ -102,13 +138,22 @@ async def get_investments(request: Request, account_id: int | None = None):
 
 
 @router.get("/spending")
-async def get_spending(request: Request, months: int = 3):
+async def get_spending(
+    request: Request,
+    months: int = 3,
+    start_date: str | None = None,
+    end_date: str | None = None,
+):
     """Get spending trends — income, expenses, savings by month.
 
     Query params:
-        months: Number of months to look back (default: 3)
+        months: Number of months to look back (default: 3). Ignored when
+                start_date is provided.
+        start_date: Optional ISO date (YYYY-MM-DD). Takes precedence over months.
+        end_date: Optional ISO date (YYYY-MM-DD). Defaults to today.
     """
-    result = await monarch_session.get_spending(months=months)
+    start, end = _validate_range(start_date, end_date)
+    result = await monarch_session.get_spending(months=months, start_date=start, end_date=end)
     status_code = 200 if result is not None else 401
     await log_request(request, "monarch", "spending", status_code)
     if result is None:

@@ -44,8 +44,8 @@ API-based via [monarchmoneycommunity](https://github.com/bradleyseanf/monarchmon
 | `/monarch/sync-status` | GET | Sync status per account — last synced, institution health |
 | `/monarch/refresh` | POST | Trigger account refresh (fire-and-forget) |
 | `/monarch/accounts` | GET | Accounts grouped by type with balances |
-| `/monarch/net-worth` | GET | Net worth from Monarch's aggregate snapshots |
-| `/monarch/spending` | GET | Spending trends: income, expenses, savings (`?months=3`) |
+| `/monarch/net-worth` | GET | Net worth from Monarch's aggregate snapshots (`?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD` for daily history) |
+| `/monarch/spending` | GET | Spending trends: income, expenses, savings (`?months=3` or `?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD`) |
 | `/monarch/investments` | GET | Investment account positions/holdings (`?account_id=N`) |
 
 ## Setup
