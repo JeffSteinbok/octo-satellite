@@ -81,7 +81,19 @@ Environment variables can be referenced in `.env` with `${VAR}` syntax.
 
 ### Monarch Money Token
 
-Place your Monarch Money API token in:
+To renew an expired Monarch session, run this command from an interactive
+terminal on the machine hosting Octo Satellite:
+
+```bash
+~/git/octo-satellite/login-monarch.sh
+```
+
+It prompts for your Monarch email, password, and MFA code, stores the renewed
+credentials in the files below with restricted permissions, validates the
+session, and restarts an active `octo-satellite.service`. Run
+`login-monarch.sh --help` for a short usage summary.
+
+Alternatively, place a Monarch Money API token in:
 ```
 ~/.config/octo-satellite/monarch/token.txt
 ```

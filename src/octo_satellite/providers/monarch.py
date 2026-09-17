@@ -50,9 +50,18 @@ class MonarchSession:
 
     async def login(self) -> bool:
         """Interactive login — prompts for email, password, and MFA."""
-        mm = self._get_client()
+        # Do not send an expired token or reuse its session during an explicit login.
+        # A successful login replaces both persisted credential formats below.
+        self._mm = MonarchMoney(session_file=str(SESSION_FILE))
+        mm = self._mm
         try:
-            await mm.interactive_login()
+            # A stale persisted session must not short-circuit an explicit re-login.
+            await mm.interactive_login(use_saved_session=False)
+            if not mm.token:
+                logger.error("Monarch login completed without returning a token.")
+                return False
+            TOKEN_FILE.write_text(f"{mm.token}\n")
+            TOKEN_FILE.chmod(0o600)
             # Lock down session file
             if SESSION_FILE.exists():
                 SESSION_FILE.chmod(0o600)
