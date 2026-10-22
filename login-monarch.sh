@@ -77,9 +77,14 @@ async def main() -> int:
 raise SystemExit(asyncio.run(main()))
 PY
 
+launchd_target="system/com.jeffsteinbok.octo-satellite"
 if systemctl --user --quiet is-active octo-satellite.service 2>/dev/null; then
     systemctl --user restart octo-satellite.service
     printf 'Restarted octo-satellite.service.\n'
+elif [[ -f /Library/LaunchDaemons/com.jeffsteinbok.octo-satellite.plist ]]; then
+    printf 'Restarting the service (sudo will ask for your Mac password)...\n'
+    sudo launchctl kickstart -k "$launchd_target"
+    printf 'Restarted %s.\n' "$launchd_target"
 else
     printf 'Octo Satellite service restart skipped.\n'
 fi

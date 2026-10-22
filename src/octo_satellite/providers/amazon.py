@@ -17,6 +17,10 @@ logger = logging.getLogger("octo_satellite.amazon")
 # Persistent session storage
 SESSION_DIR = Path(settings.amazon_session_dir).expanduser()
 
+# Amazon keeps showing "Hello, <name>" on the account homepage after the session
+# goes stale, but order history demands a fresh sign-in — so probe auth here.
+AUTH_CHECK_URL = "https://www.amazon.com/your-orders/orders"
+
 
 class AmazonSession:
     """Manages a persistent Playwright browser session for Amazon."""
@@ -122,10 +126,7 @@ class AmazonSession:
         async with self._lock:
             page = await self._new_page()
             try:
-                await page.goto(
-                    "https://www.amazon.com/gp/css/homepage.html",
-                    wait_until="domcontentloaded",
-                )
+                await page.goto(AUTH_CHECK_URL, wait_until="domcontentloaded")
                 await page.wait_for_timeout(2000)
 
                 if not await self._verify_authenticated(page):
@@ -165,6 +166,14 @@ class AmazonSession:
                     url = f"https://www.amazon.com/your-orders/orders?startIndex={start_index}"
                 await page.goto(url, wait_until="domcontentloaded")
 
+                if not await self._verify_authenticated(page):
+                    return {
+                        "total_count": 0,
+                        "page": page_num,
+                        "total_pages": 0,
+                        "orders": [],
+                    }
+
                 if search:
                     # Search results use .a-fixed-left-grid layout
                     await page.wait_for_selector(
@@ -172,14 +181,6 @@ class AmazonSession:
                         timeout=15000,
                     )
                     await page.wait_for_timeout(2000)
-
-                    if not await self._verify_authenticated(page):
-                        return {
-                            "total_count": 0,
-                            "page": page_num,
-                            "total_pages": 0,
-                            "orders": [],
-                        }
 
                     count_info = await page.evaluate(r"""() => {
                         const text = document.body.innerText;
@@ -198,14 +199,6 @@ class AmazonSession:
                         timeout=15000,
                     )
                     await page.wait_for_timeout(2000)
-
-                    if not await self._verify_authenticated(page):
-                        return {
-                            "total_count": 0,
-                            "page": page_num,
-                            "total_pages": 0,
-                            "orders": [],
-                        }
 
                     count_info = await page.evaluate(r"""() => {
                         const text = document.body.innerText;
@@ -264,10 +257,7 @@ class AmazonSession:
         async with self._lock:
             page = await self._new_page()
             try:
-                await page.goto(
-                    "https://www.amazon.com/gp/css/homepage.html",
-                    wait_until="domcontentloaded",
-                )
+                await page.goto(AUTH_CHECK_URL, wait_until="domcontentloaded")
                 await page.wait_for_timeout(2000)
 
                 if not await self._verify_authenticated(page):
