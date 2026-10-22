@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     # Dev port — auth is skipped when running on this port
     dev_port: int = 9001
 
+    # Auto-restart on code changes — for local development only
+    reload: bool = False
+
     # Reject requests from non-loopback clients (defense-in-depth)
     localhost_only: bool = True
 
